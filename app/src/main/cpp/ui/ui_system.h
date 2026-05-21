@@ -2,6 +2,8 @@
 #include "widget.h"
 #include "ui_renderer.h"
 
+struct AAssetManager;
+
 namespace ui {
 
 // Top-level manager: owns the root Container and routes input.
@@ -10,7 +12,7 @@ public:
     UISystem();
     ~UISystem();
 
-    void init();
+    void init(AAssetManager* mgr);
     void shutdown();
 
     // Called on GL thread.

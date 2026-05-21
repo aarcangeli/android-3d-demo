@@ -1,9 +1,8 @@
 #include "ui_renderer.h"
-#include "font_data.h"
 #include <GLES2/gl2.h>
 #include <android/log.h>
-#include <cstring>
 #include <cmath>
+#include <cstring>
 #include <algorithm>
 
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR,"UIRenderer",__VA_ARGS__)
@@ -28,6 +27,8 @@ void main() {
 }
 )glsl";
 
+// uUseTex == 1: sample font atlas (GL_LUMINANCE → .r acts as alpha mask).
+// uUseTex == 0: solid color quad.
 static const char* UI_FRAG = R"glsl(
 precision mediump float;
 varying vec2 vUV;
@@ -48,7 +49,7 @@ static GLuint compileShader(GLenum type, const char* src) {
     GLuint s = glCreateShader(type);
     glShaderSource(s, 1, &src, nullptr);
     glCompileShader(s);
-    GLint ok; glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
+    GLint ok = 0; glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
     if (!ok) {
         char buf[512]; glGetShaderInfoLog(s, sizeof(buf), nullptr, buf);
         LOGE("Shader error: %s", buf);
@@ -59,19 +60,20 @@ static GLuint compileShader(GLenum type, const char* src) {
 
 // ── Init / Shutdown ──────────────────────────────────────────────────────────
 
-void UIRenderer::init() {
-    buildShader();
-    buildFontTexture();
+// Sizes to pre-bake (must cover all fontSize values used in demo_scene.cpp).
+static const int FONT_SIZES[] = {12, 13, 14, 16, 18, 24, 0};
 
+void UIRenderer::init(AAssetManager* mgr) {
+    buildShader();
     glGenBuffers(1, &vbo_);
     glGenBuffers(1, &ibo_);
+    fontAtlas_.init(mgr, "FreeSans.ttf", FONT_SIZES);
 }
 
 void UIRenderer::shutdown() {
-    if (prog_)    { glDeleteProgram(prog_);    prog_ = 0; }
-    if (fontTex_) { glDeleteTextures(1, &fontTex_); fontTex_ = 0; }
-    if (vbo_)     { glDeleteBuffers(1, &vbo_); vbo_ = 0; }
-    if (ibo_)     { glDeleteBuffers(1, &ibo_); ibo_ = 0; }
+    if (prog_) { glDeleteProgram(prog_); prog_ = 0; }
+    if (vbo_)  { glDeleteBuffers(1, &vbo_); vbo_ = 0; }
+    if (ibo_)  { glDeleteBuffers(1, &ibo_); ibo_ = 0; }
 }
 
 void UIRenderer::buildShader() {
@@ -81,8 +83,7 @@ void UIRenderer::buildShader() {
     glAttachShader(prog_, v);
     glAttachShader(prog_, f);
     glLinkProgram(prog_);
-    glDeleteShader(v);
-    glDeleteShader(f);
+    glDeleteShader(v); glDeleteShader(f);
 
     aPos_    = glGetAttribLocation (prog_, "aPos");
     aUV_     = glGetAttribLocation (prog_, "aUV");
@@ -92,68 +93,31 @@ void UIRenderer::buildShader() {
     uUseTex_ = glGetUniformLocation(prog_, "uUseTex");
 }
 
-void UIRenderer::buildFontTexture() {
-    // Build a single-channel (R8 via GL_LUMINANCE on ES 2.0) texture atlas.
-    // Atlas: 128 × 48 px, 16 cols × 6 rows of 8×8 glyph cells.
-    std::vector<uint8_t> atlas(FONT_ATLAS_W * FONT_ATLAS_H, 0);
-
-    for (int ch = 0; ch < 96; ++ch) {
-        int col = ch % FONT_COLS;
-        int row = ch / FONT_COLS;
-        for (int gy = 0; gy < FONT_CELL_H; ++gy) {
-            uint8_t row_bits = FONT_8X8[ch][gy];
-            for (int gx = 0; gx < FONT_CELL_W; ++gx) {
-                bool on = (row_bits >> (7 - gx)) & 1;
-                int px = col * FONT_CELL_W + gx;
-                int py = row * FONT_CELL_H + gy;
-                atlas[py * FONT_ATLAS_W + px] = on ? 0xFF : 0x00;
-            }
-        }
-    }
-
-    glGenTextures(1, &fontTex_);
-    glBindTexture(GL_TEXTURE_2D, fontTex_);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE,
-                 FONT_ATLAS_W, FONT_ATLAS_H, 0,
-                 GL_LUMINANCE, GL_UNSIGNED_BYTE, atlas.data());
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glBindTexture(GL_TEXTURE_2D, 0);
-}
-
 // ── Frame ────────────────────────────────────────────────────────────────────
 
 void UIRenderer::begin(float screenW, float screenH) {
-    sw_ = screenW;
-    sh_ = screenH;
+    sw_ = screenW; sh_ = screenH;
     batches_.clear();
     scissorStack_.clear();
 }
 
 void UIRenderer::end() {
     flush();
-
-    // Restore state that the 3-D renderer expects.
     glDisable(GL_BLEND);
     glDisable(GL_SCISSOR_TEST);
-    glDisable(GL_DEPTH_TEST);
 }
 
 // ── Batch management ─────────────────────────────────────────────────────────
 
 UIRenderer::Batch& UIRenderer::currentBatch(DrawMode mode) {
-    if (batches_.empty() || batches_.back().mode != mode) {
+    if (batches_.empty() || batches_.back().mode != mode)
         batches_.push_back({mode, {}, {}});
-    }
     return batches_.back();
 }
 
 void UIRenderer::flush() {
     if (batches_.empty()) return;
 
-    // Save & set GL state for UI rendering.
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glDisable(GL_DEPTH_TEST);
@@ -166,38 +130,30 @@ void UIRenderer::flush() {
     glEnableVertexAttribArray(aUV_);
     glEnableVertexAttribArray(aCol_);
 
-    for (auto& b : batches_) {
-        if (b.verts.empty()) continue;
-        submitBatch(b);
-    }
+    for (auto& b : batches_)
+        if (!b.verts.empty()) submitBatch(b);
 
     glDisableVertexAttribArray(aPos_);
     glDisableVertexAttribArray(aUV_);
     glDisableVertexAttribArray(aCol_);
     glBindTexture(GL_TEXTURE_2D, 0);
     glDisable(GL_BLEND);
-
     batches_.clear();
 }
 
 void UIRenderer::submitBatch(Batch& b) {
     bool useTex = (b.mode == DrawMode::TEXT);
     glUniform1f(uUseTex_, useTex ? 1.f : 0.f);
-
-    if (useTex) {
-        glBindTexture(GL_TEXTURE_2D, fontTex_);
-    } else {
-        glBindTexture(GL_TEXTURE_2D, 0);
-    }
+    glBindTexture(GL_TEXTURE_2D, useTex ? fontAtlas_.texture() : 0);
 
     glBindBuffer(GL_ARRAY_BUFFER, vbo_);
     glBufferData(GL_ARRAY_BUFFER,
-                 b.verts.size() * sizeof(Vertex),
+                 (GLsizeiptr)(b.verts.size() * sizeof(Vertex)),
                  b.verts.data(), GL_DYNAMIC_DRAW);
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER,
-                 b.indices.size() * sizeof(uint16_t),
+                 (GLsizeiptr)(b.indices.size() * sizeof(uint16_t)),
                  b.indices.data(), GL_DYNAMIC_DRAW);
 
     const GLsizei stride = sizeof(Vertex);
@@ -216,10 +172,10 @@ void UIRenderer::submitBatch(Batch& b) {
 }
 
 void UIRenderer::pushQuad(Batch& b,
-                           float x, float y, float w, float h,
-                           float u0, float v0, float u1, float v1,
-                           Color c) {
-    uint16_t base = (uint16_t)b.verts.size();
+                            float x,  float y,  float w,  float h,
+                            float u0, float v0, float u1, float v1,
+                            Color c) {
+    auto base = (uint16_t)b.verts.size();
     b.verts.push_back({x,   y,   u0, v0, c.r, c.g, c.b, c.a});
     b.verts.push_back({x+w, y,   u1, v0, c.r, c.g, c.b, c.a});
     b.verts.push_back({x+w, y+h, u1, v1, c.r, c.g, c.b, c.a});
@@ -234,8 +190,7 @@ void UIRenderer::pushQuad(Batch& b,
 
 void UIRenderer::drawRect(float x, float y, float w, float h, Color c) {
     if (c.a < 0.001f || w <= 0 || h <= 0) return;
-    Batch& b = currentBatch(DrawMode::COLOR);
-    pushQuad(b, x, y, w, h, 0, 0, 0, 0, c);
+    pushQuad(currentBatch(DrawMode::COLOR), x, y, w, h, 0, 0, 0, 0, c);
 }
 
 void UIRenderer::drawRoundRect(float x, float y, float w, float h,
@@ -243,98 +198,106 @@ void UIRenderer::drawRoundRect(float x, float y, float w, float h,
     if (c.a < 0.001f || w <= 0 || h <= 0) return;
     radius = std::min(radius, std::min(w, h) * 0.5f);
 
-    // Fill main body (cross)
-    drawRect(x + radius, y,          w - radius*2, h,          c);
-    drawRect(x,          y + radius, radius,        h - radius*2, c);
-    drawRect(x + w - radius, y + radius, radius,   h - radius*2, c);
+    // Fill interior cross.
+    drawRect(x + radius, y,          w - radius*2, h,           c);
+    drawRect(x,          y + radius, radius,       h - radius*2, c);
+    drawRect(x + w - radius, y + radius, radius,  h - radius*2, c);
 
-    // Rounded corners using triangle fans
-    const int segs = 8;
+    // Corner fans.
     Batch& b = currentBatch(DrawMode::COLOR);
+    const int segs = 8;
+    const float PI = 3.14159265f;
 
     auto corner = [&](float cx, float cy, float startAngle) {
-        uint16_t center_idx = (uint16_t)b.verts.size();
+        auto ci = (uint16_t)b.verts.size();
         b.verts.push_back({cx, cy, 0, 0, c.r, c.g, c.b, c.a});
-        uint16_t prev_idx = (uint16_t)b.verts.size();
         float a0 = startAngle;
-        b.verts.push_back({cx + radius * cosf(a0), cy + radius * sinf(a0),
+        auto prev = (uint16_t)b.verts.size();
+        b.verts.push_back({cx + radius*cosf(a0), cy + radius*sinf(a0),
                            0, 0, c.r, c.g, c.b, c.a});
         for (int i = 1; i <= segs; ++i) {
-            float a = startAngle + (float)i / segs * (3.14159265f * 0.5f);
-            uint16_t cur = (uint16_t)b.verts.size();
-            b.verts.push_back({cx + radius * cosf(a), cy + radius * sinf(a),
+            float a   = startAngle + (float)i / segs * (PI * 0.5f);
+            auto  cur = (uint16_t)b.verts.size();
+            b.verts.push_back({cx + radius*cosf(a), cy + radius*sinf(a),
                                0, 0, c.r, c.g, c.b, c.a});
-            b.indices.insert(b.indices.end(), {center_idx, prev_idx, cur});
-            prev_idx = cur;
+            b.indices.insert(b.indices.end(), {ci, prev, cur});
+            prev = cur;
         }
     };
-    static const float PI = 3.14159265f;
-    corner(x + radius,         y + radius,         PI);         // top-left
-    corner(x + w - radius,     y + radius,         PI * 1.5f);  // top-right
-    corner(x + w - radius,     y + h - radius,     0.f);        // bottom-right
-    corner(x + radius,         y + h - radius,     PI * 0.5f);  // bottom-left
+    corner(x + radius,     y + radius,     PI);
+    corner(x + w - radius, y + radius,     PI * 1.5f);
+    corner(x + w - radius, y + h - radius, 0.f);
+    corner(x + radius,     y + h - radius, PI * 0.5f);
 }
 
 void UIRenderer::drawRectBorder(float x, float y, float w, float h,
-                                 float thickness, Color c) {
+                                  float t, Color c) {
     if (c.a < 0.001f) return;
-    float t = thickness;
-    drawRect(x,         y,         w, t,          c); // top
-    drawRect(x,         y+h-t,     w, t,          c); // bottom
-    drawRect(x,         y+t,       t, h-2*t,      c); // left
-    drawRect(x+w-t,     y+t,       t, h-2*t,      c); // right
+    drawRect(x,       y,       w, t,      c);
+    drawRect(x,       y+h-t,   w, t,      c);
+    drawRect(x,       y+t,     t, h-2*t,  c);
+    drawRect(x+w-t,   y+t,     t, h-2*t,  c);
 }
 
-void UIRenderer::drawText(const std::string& text,
-                           float x, float y,
-                           float fontSize, Color c, TextAlign align) {
+void UIRenderer::drawText(const std::string& text, float x, float y,
+                            float fontSize, Color c, TextAlign align) {
     if (text.empty() || c.a < 0.001f || fontSize < 1.f) return;
 
-    float scale = fontSize / (float)FONT_CELL_H;
+    int   sz    = fontAtlas_.snapSize((int)std::round(fontSize));
+    float scale = fontSize / (float)sz;
 
+    // Measure for alignment.
     if (align != TextAlign::LEFT) {
         float tw = measureText(text, fontSize);
         if (align == TextAlign::CENTER) x -= tw * 0.5f;
         else                            x -= tw;
     }
 
+    // Baseline position: y is top of line, ascender is distance to baseline.
+    float baseline = y + fontAtlas_.ascender(sz) * scale;
+
     Batch& b = currentBatch(DrawMode::TEXT);
+    float  cx = x;
 
-    float cx = x;
     for (unsigned char ch : text) {
-        if (ch < 32 || ch > 127) { cx += fontSize * 0.5f; continue; }
-        int idx = ch - 32;
-        int col = idx % FONT_COLS;
-        int row = idx / FONT_COLS;
+        if (ch < 32 || ch > 126) {
+            cx += fontSize * 0.5f;
+            continue;
+        }
+        const GlyphMetrics* g = fontAtlas_.getGlyph(ch, sz);
+        if (!g) { cx += fontSize * 0.4f; continue; }
 
-        float u0 = (float)(col * FONT_CELL_W)       / FONT_ATLAS_W;
-        float v0 = (float)(row * FONT_CELL_H)       / FONT_ATLAS_H;
-        float u1 = (float)((col+1) * FONT_CELL_W)   / FONT_ATLAS_W;
-        float v1 = (float)((row+1) * FONT_CELL_H)   / FONT_ATLAS_H;
+        // Glyph top-left in screen pixels.
+        float gx = cx + g->bearingX * scale;
+        float gy = baseline - g->bearingY * scale;
+        float gw = (float)g->bitmapW * scale;
+        float gh = (float)g->bitmapH * scale;
 
-        float gw = FONT_CELL_W * scale;
-        float gh = FONT_CELL_H * scale;
+        if (gw > 0 && gh > 0)
+            pushQuad(b, gx, gy, gw, gh, g->u0, g->v0, g->u1, g->v1, c);
 
-        pushQuad(b, cx, y, gw, gh, u0, v0, u1, v1, c);
-        cx += gw;
+        cx += g->advanceX * scale;
     }
 }
 
 float UIRenderer::measureText(const std::string& text, float fontSize) const {
-    float scale = fontSize / (float)FONT_CELL_H;
-    int   count = 0;
-    for (unsigned char ch : text)
-        count += (ch >= 32 && ch <= 127) ? 1 : 0;
-    return count * FONT_CELL_W * scale;
+    int   sz    = fontAtlas_.snapSize((int)std::round(fontSize));
+    float scale = fontSize / (float)sz;
+    float total = 0;
+    for (unsigned char ch : text) {
+        if (ch < 32 || ch > 126) { total += fontSize * 0.5f; continue; }
+        const GlyphMetrics* g = fontAtlas_.getGlyph(ch, sz);
+        total += g ? g->advanceX * scale : fontSize * 0.4f;
+    }
+    return total;
 }
 
 // ── Scissor ──────────────────────────────────────────────────────────────────
 
 void UIRenderer::pushScissor(float x, float y, float w, float h) {
     flush();
-    scissorStack_.push_back({x, y, w, h, true});
+    scissorStack_.push_back({x, y, w, h});
     glEnable(GL_SCISSOR_TEST);
-    // GL scissor origin is bottom-left; we store top-left coords.
     glScissor((GLint)x, (GLint)(sh_ - y - h), (GLsizei)w, (GLsizei)h);
 }
 

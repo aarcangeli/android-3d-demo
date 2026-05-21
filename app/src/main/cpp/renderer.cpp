@@ -1,5 +1,7 @@
 #include <jni.h>
 #include <GLES2/gl2.h>
+#include <android/asset_manager.h>
+#include <android/asset_manager_jni.h>
 #include <android/log.h>
 #include <cmath>
 #include <cstring>
@@ -127,7 +129,7 @@ void renderTriangle(float rx, float ry, float rw, float rh) {
 extern "C" {
 
 JNIEXPORT void JNICALL
-Java_com_example_openglndkdemo_GLRenderer_nativeInit(JNIEnv*, jobject) {
+Java_com_example_openglndkdemo_GLRenderer_nativeInit(JNIEnv* env, jobject, jobject jAssetMgr) {
     GLuint v = compileShader(GL_VERTEX_SHADER,   TRI_VERT);
     GLuint f = compileShader(GL_FRAGMENT_SHADER, TRI_FRAG);
     g_triProg = glCreateProgram();
@@ -140,7 +142,8 @@ Java_com_example_openglndkdemo_GLRenderer_nativeInit(JNIEnv*, jobject) {
     g_aColor = glGetAttribLocation (g_triProg, "aColor");
     g_uScale = glGetUniformLocation(g_triProg, "uScale");
 
-    g_ui.init();
+    AAssetManager* am = AAssetManager_fromJava(env, jAssetMgr);
+    g_ui.init(am);
 
     buildDemoScene(g_ui, renderTriangle,
                    g_fpsLabel, g_angleLabel, g_statusLabel);

@@ -1,4 +1,5 @@
 #include "ui_system.h"
+#include <android/asset_manager.h>
 #include <android/log.h>
 #include <cstring>
 
@@ -9,8 +10,8 @@ namespace ui {
 UISystem::UISystem() = default;
 UISystem::~UISystem() { shutdown(); }
 
-void UISystem::init() {
-    renderer_.init();
+void UISystem::init(AAssetManager* mgr) {
+    renderer_.init(mgr);
 }
 
 void UISystem::shutdown() {
