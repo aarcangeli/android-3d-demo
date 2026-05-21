@@ -2,8 +2,12 @@ package com.example.openglndkdemo
 
 import android.app.ActivityManager
 import android.content.Context
+import android.graphics.Color
 import android.opengl.GLSurfaceView
 import android.os.Bundle
+import android.view.Gravity
+import android.widget.FrameLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 
@@ -20,12 +24,36 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+        val fpsLabel = TextView(this).apply {
+            setTextColor(Color.WHITE)
+            setShadowLayer(4f, 1f, 1f, Color.BLACK)
+            textSize = 14f
+            text = "-- FPS"
+            val pad = (12 * resources.displayMetrics.density).toInt()
+            setPadding(pad, pad, pad, pad)
+        }
+
+        val renderer = GLRenderer { fps ->
+            runOnUiThread { fpsLabel.text = "$fps FPS" }
+        }
+
         glView = GLSurfaceView(this).also { v ->
             v.setEGLContextClientVersion(2)
-            v.setRenderer(GLRenderer())
+            v.setRenderer(renderer)
             v.renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
-            setContentView(v)
         }
+
+        val root = FrameLayout(this)
+        root.addView(glView, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT
+        ))
+        root.addView(fpsLabel, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            Gravity.TOP or Gravity.START
+        ))
+        setContentView(root)
     }
 
     override fun onResume() {

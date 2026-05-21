@@ -12,10 +12,11 @@ namespace {
 const char* VERT_SRC = R"glsl(
 attribute vec2 aPos;
 attribute vec4 aColor;
+uniform vec2 uScale;
 varying vec4 vColor;
 void main() {
     vColor = aColor;
-    gl_Position = vec4(aPos, 0.0, 1.0);
+    gl_Position = vec4(aPos * uScale, 0.0, 1.0);
 }
 )glsl";
 
@@ -30,6 +31,9 @@ void main() {
 GLuint g_program = 0;
 GLint  g_aPos    = -1;
 GLint  g_aColor  = -1;
+GLint  g_uScale  = -1;
+float  g_scaleX  = 1.0f;
+float  g_scaleY  = 1.0f;
 float  g_angle   = 0.0f;
 
 GLuint compileShader(GLenum type, const char* src) {
@@ -75,14 +79,25 @@ Java_com_example_openglndkdemo_GLRenderer_nativeInit(JNIEnv*, jobject) {
 
     g_aPos   = glGetAttribLocation(g_program, "aPos");
     g_aColor = glGetAttribLocation(g_program, "aColor");
+    g_uScale = glGetUniformLocation(g_program, "uScale");
     glClearColor(0.05f, 0.05f, 0.15f, 1.0f);
-    LOGI("GL init OK  program=%u aPos=%d aColor=%d", g_program, g_aPos, g_aColor);
+    LOGI("GL init OK  program=%u aPos=%d aColor=%d uScale=%d", g_program, g_aPos, g_aColor, g_uScale);
 }
 
 JNIEXPORT void JNICALL
 Java_com_example_openglndkdemo_GLRenderer_nativeResize(JNIEnv*, jobject, jint w, jint h) {
     glViewport(0, 0, w, h);
-    LOGI("Viewport %dx%d", w, h);
+    // Scale the smaller NDC axis so the triangle always appears undistorted.
+    // The larger screen dimension maps to the full [-1,1] NDC range;
+    // the smaller one is compressed proportionally.
+    if (w >= h) {
+        g_scaleX = static_cast<float>(h) / w;
+        g_scaleY = 1.0f;
+    } else {
+        g_scaleX = 1.0f;
+        g_scaleY = static_cast<float>(w) / h;
+    }
+    LOGI("Viewport %dx%d  scale=(%.3f, %.3f)", w, h, g_scaleX, g_scaleY);
 }
 
 JNIEXPORT void JNICALL
@@ -94,16 +109,15 @@ Java_com_example_openglndkdemo_GLRenderer_nativeDraw(JNIEnv*, jobject) {
     const float c = cosf(rad);
     const float s = sinf(rad);
 
-    // Equilateral triangle inscribed in a circle of radius ~0.9
+    // Equilateral triangle inscribed in unit circle, radius 0.9
     const float bx[3] = {  0.0f,   0.779f, -0.779f };
     const float by[3] = {  0.9f,  -0.45f,  -0.45f  };
     const float col[3][4] = {
-        { 1.0f, 0.25f, 0.25f, 1.0f },   // red
-        { 0.25f, 1.0f, 0.25f, 1.0f },   // green
-        { 0.25f, 0.25f, 1.0f, 1.0f },   // blue
+        { 1.0f, 0.25f, 0.25f, 1.0f },
+        { 0.25f, 1.0f, 0.25f, 1.0f },
+        { 0.25f, 0.25f, 1.0f, 1.0f },
     };
 
-    // Interleaved vertex buffer: x, y, r, g, b, a
     float v[3][6];
     for (int i = 0; i < 3; i++) {
         v[i][0] = c * bx[i] - s * by[i];
@@ -116,6 +130,7 @@ Java_com_example_openglndkdemo_GLRenderer_nativeDraw(JNIEnv*, jobject) {
 
     glClear(GL_COLOR_BUFFER_BIT);
     glUseProgram(g_program);
+    glUniform2f(g_uScale, g_scaleX, g_scaleY);
 
     const int stride = 6 * sizeof(float);
     glVertexAttribPointer(g_aPos,   2, GL_FLOAT, GL_FALSE, stride, &v[0][0]);
