@@ -21,16 +21,31 @@ class GLRenderer(private val onFpsUpdate: (Int) -> Unit) : GLSurfaceView.Rendere
         } else {
             val elapsed = now - lastFpsTime
             if (elapsed >= 1_000_000_000L) {
-                onFpsUpdate((frameCount * 1_000_000_000L / elapsed).toInt())
+                val fps = (frameCount * 1_000_000_000L / elapsed).toInt()
+                onFpsUpdate(fps)
+                nativeSetFps("$fps FPS")
                 frameCount = 0
                 lastFpsTime = now
             }
         }
     }
 
+    // Input — called from the UI thread, forwarded to native input queue.
+    fun touchDown  (id: Int, x: Float, y: Float) = nativeTouchDown  (id, x, y)
+    fun touchMove  (id: Int, x: Float, y: Float) = nativeTouchMove  (id, x, y)
+    fun touchUp    (id: Int, x: Float, y: Float) = nativeTouchUp    (id, x, y)
+    fun touchCancel(id: Int, x: Float, y: Float) = nativeTouchCancel(id, x, y)
+    fun key        (code: Int, unicode: Int, down: Boolean) = nativeKey(code, unicode, down)
+
     private external fun nativeInit()
     private external fun nativeResize(width: Int, height: Int)
     private external fun nativeDraw()
+    private external fun nativeSetFps(fps: String)
+    private external fun nativeTouchDown  (id: Int, x: Float, y: Float)
+    private external fun nativeTouchMove  (id: Int, x: Float, y: Float)
+    private external fun nativeTouchUp    (id: Int, x: Float, y: Float)
+    private external fun nativeTouchCancel(id: Int, x: Float, y: Float)
+    private external fun nativeKey        (keyCode: Int, unicode: Int, down: Boolean)
 
     companion object {
         init { System.loadLibrary("openglndkdemo") }

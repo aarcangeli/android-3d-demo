@@ -2,18 +2,17 @@ package com.example.openglndkdemo
 
 import android.app.ActivityManager
 import android.content.Context
-import android.graphics.Color
 import android.opengl.GLSurfaceView
 import android.os.Bundle
-import android.view.Gravity
-import android.widget.FrameLayout
-import android.widget.TextView
+import android.view.KeyEvent
+import android.view.MotionEvent
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 
 class MainActivity : AppCompatActivity() {
 
     private var glView: GLSurfaceView? = null
+    private var renderer: GLRenderer?  = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -24,36 +23,53 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val fpsLabel = TextView(this).apply {
-            setTextColor(Color.WHITE)
-            setShadowLayer(4f, 1f, 1f, Color.BLACK)
-            textSize = 14f
-            text = "-- FPS"
-            val pad = (12 * resources.displayMetrics.density).toInt()
-            setPadding(pad, pad, pad, pad)
-        }
+        renderer = GLRenderer { /* FPS is updated natively via nativeSetFps */ }
 
-        val renderer = GLRenderer { fps ->
-            runOnUiThread { fpsLabel.text = "$fps FPS" }
-        }
+        glView = object : GLSurfaceView(this) {
+            // Touch events go directly to the native input queue.
+            override fun onTouchEvent(event: MotionEvent): Boolean {
+                val r = renderer ?: return false
+                val action = event.actionMasked
+                val idx    = event.actionIndex
+                val id     = event.getPointerId(idx)
+                val x      = event.getX(idx)
+                val y      = event.getY(idx)
 
-        glView = GLSurfaceView(this).also { v ->
+                when (action) {
+                    MotionEvent.ACTION_DOWN,
+                    MotionEvent.ACTION_POINTER_DOWN -> r.touchDown(id, x, y)
+
+                    MotionEvent.ACTION_MOVE -> {
+                        for (i in 0 until event.pointerCount) {
+                            r.touchMove(event.getPointerId(i),
+                                        event.getX(i), event.getY(i))
+                        }
+                    }
+
+                    MotionEvent.ACTION_UP,
+                    MotionEvent.ACTION_POINTER_UP  -> r.touchUp(id, x, y)
+
+                    MotionEvent.ACTION_CANCEL       -> r.touchCancel(id, x, y)
+                }
+                return true
+            }
+        }.also { v ->
             v.setEGLContextClientVersion(2)
             v.setRenderer(renderer)
             v.renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
         }
 
-        val root = FrameLayout(this)
-        root.addView(glView, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.MATCH_PARENT
-        ))
-        root.addView(fpsLabel, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            Gravity.TOP or Gravity.START
-        ))
-        setContentView(root)
+        setContentView(glView)
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        renderer?.key(keyCode, event?.unicodeChar ?: 0, true)
+        return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
+        renderer?.key(keyCode, event?.unicodeChar ?: 0, false)
+        return super.onKeyUp(keyCode, event)
     }
 
     override fun onResume() {
