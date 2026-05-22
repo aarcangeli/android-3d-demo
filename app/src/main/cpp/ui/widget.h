@@ -170,6 +170,9 @@ public:
 };
 
 // ─── ScrollContainer ─────────────────────────────────────────────────────────
+
+enum class OverscrollMode { NONE, GLOW, STRETCH };
+
 // A clipped, vertically-scrollable container with a visual scrollbar.
 
 class ScrollContainer : public Widget {
@@ -178,6 +181,10 @@ public:
     Color thumbColor   = Color{0.40f, 0.45f, 0.62f, 0.85f};
     float scrollbarW   = 6.f;
     float scrollbarPad = 2.f;
+
+    OverscrollMode overscrollMode = OverscrollMode::GLOW;
+    Color          glowColor      = Colors::accent;
+    float          glowMaxH       = 40.f;   // dp-scaled by caller
 
     Container& content() { return content_; }
 
@@ -192,6 +199,8 @@ private:
     Container content_;
     float scrollY_     = 0.f;
     float contentH_    = 0.f;
+    float overScrollY_ = 0.f;   // rubber-band extra; sign: + = bottom OS, - = top OS
+    void  drawOverscrollEffect(UIRenderer& r);
 
     enum class DragState { NONE, TENTATIVE, SCROLLING };
     DragState drag_        = DragState::NONE;

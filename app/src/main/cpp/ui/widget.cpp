@@ -131,15 +131,25 @@ void ScrollContainer::doLayout() {
     clampScroll();
     // Final pass: position children with scroll offset and correct x/y.
     float cw = contentW();
-    content_.x = x; content_.y = y - scrollY_;
+    content_.x = x; content_.y = y - scrollY_ - overScrollY_;
     content_.w = cw; content_.h = std::max(h, contentH_);
     content_.doLayout();
 }
 
 void ScrollContainer::draw(UIRenderer& r) {
     if (!visible) return;
+    // Spring-back animation for overscroll
+    if (drag_ == DragState::NONE && std::abs(overScrollY_) > 0.3f) {
+        float decay = (overscrollMode == OverscrollMode::STRETCH) ? 0.55f : 0.68f;
+        overScrollY_ *= decay;
+        doLayout();
+    } else if (drag_ == DragState::NONE && overScrollY_ != 0.f) {
+        overScrollY_ = 0.f;
+        doLayout();
+    }
     r.pushScissor(x, y, w, h);
     content_.draw(r);
+    drawOverscrollEffect(r);   // <-- overscroll gradient inside scissor
     r.popScissor();
     if (showBar()) {
         float tx  = barX();
@@ -161,6 +171,39 @@ float ScrollContainer::thumbTop() const {
     float maxScroll = contentH_ - h;
     float t = (maxScroll > 0.f) ? scrollY_ / maxScroll : 0.f;
     return trackTop() + maxY * t;
+}
+
+void ScrollContainer::drawOverscrollEffect(UIRenderer& r) {
+    if (overscrollMode == OverscrollMode::NONE) return;
+    if (std::abs(overScrollY_) < 0.5f) return;
+
+    float os = overScrollY_;
+    float t  = std::min(1.f, std::abs(os) / std::max(1.f, glowMaxH));
+
+    if (overscrollMode == OverscrollMode::GLOW) {
+        // Colored glow gradient at the edge, fading inward
+        float gh    = glowMaxH * t;
+        Color solid = glowColor.withAlpha(0.45f * t);
+        Color clear = glowColor.withAlpha(0.f);
+        if (os < 0.f) {
+            r.drawGradientRect(x, y,           w, gh, solid, clear);
+        } else {
+            r.drawGradientRect(x, y + h - gh,  w, gh, clear, solid);
+        }
+    } else { // STRETCH
+        // Fade content edge to bg color, simulating stretched thinning
+        Color bg   = (content_.bgColor.a > 0.001f)
+                         ? content_.bgColor
+                         : Color{0.08f, 0.09f, 0.12f, 1.f};
+        Color bgFt = bg.withAlpha(bg.a * std::min(1.f, t * 1.5f));
+        Color bgNa = bg.withAlpha(0.f);
+        float sh   = std::min(glowMaxH, std::abs(os) * 1.8f);
+        if (os < 0.f) {
+            r.drawGradientRect(x, y,           w, sh, bgFt, bgNa);
+        } else {
+            r.drawGradientRect(x, y + h - sh,  w, sh, bgNa, bgFt);
+        }
+    }
 }
 
 bool ScrollContainer::onInput(const InputEvent& e) {
@@ -187,8 +230,18 @@ bool ScrollContainer::onInput(const InputEvent& e) {
             content_.onInput(cancel);
         }
         if (drag_ == DragState::SCROLLING) {
-            scrollY_ = dragScrollY_ - dy;
-            clampScroll();
+            float raw      = dragScrollY_ - dy;
+            float maxScroll = std::max(0.f, contentH_ - h);
+            if (raw < 0.f) {
+                scrollY_     = 0.f;
+                overScrollY_ = raw * 0.3f;           // negative = top overscroll
+            } else if (raw > maxScroll) {
+                scrollY_     = maxScroll;
+                overScrollY_ = (raw - maxScroll) * 0.3f;  // positive = bottom overscroll
+            } else {
+                scrollY_     = raw;
+                overScrollY_ = 0.f;
+            }
             doLayout();
         } else {
             content_.onInput(e);

@@ -130,7 +130,7 @@ extern "C" {
 
 JNIEXPORT void JNICALL
 Java_com_example_openglndkdemo_GLRenderer_nativeInit(JNIEnv* env, jobject,
-                                                     jobject jAssetMgr, jfloat density) {
+                                                     jobject jAssetMgr, jfloat density, jint apiLevel) {
     GLuint v = compileShader(GL_VERTEX_SHADER,   TRI_VERT);
     GLuint f = compileShader(GL_FRAGMENT_SHADER, TRI_FRAG);
     g_triProg = glCreateProgram();
@@ -151,7 +151,7 @@ Java_com_example_openglndkdemo_GLRenderer_nativeInit(JNIEnv* env, jobject,
     g_ui.root().clearChildren();
     g_fpsLabel = g_angleLabel = g_statusLabel = nullptr;
 
-    buildDemoScene(g_ui, renderTriangle, density,
+    buildDemoScene(g_ui, renderTriangle, density, (int)apiLevel,
                    g_fpsLabel, g_angleLabel, g_statusLabel);
 
     glClearColor(0.08f, 0.09f, 0.12f, 1.f);

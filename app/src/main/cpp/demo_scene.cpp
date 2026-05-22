@@ -32,6 +32,7 @@ static void setStatus(Label** ppStatus, const std::string& msg, Color c) {
 void buildDemoScene(UISystem& sys,
                     std::function<void(float,float,float,float)> glCb,
                     float dp,
+                    int apiLevel,
                     Label*& outFps,
                     Label*& outAngle,
                     Label*& outStatus)
@@ -83,6 +84,11 @@ void buildDemoScene(UISystem& sys,
     scroll->scrollbarPad = 2.f  * dp;
     scroll->trackColor   = pal::panelDark;
     scroll->thumbColor   = Color{0.35f, 0.42f, 0.62f, 0.9f};
+    scroll->overscrollMode = (apiLevel >= 31)
+        ? ui::OverscrollMode::STRETCH
+        : ui::OverscrollMode::GLOW;
+    scroll->glowColor = pal::accent;
+    scroll->glowMaxH  = 40.f * dp;
 
     Container* leftPanel = &scroll->content();
     leftPanel->bgColor = pal::panel;

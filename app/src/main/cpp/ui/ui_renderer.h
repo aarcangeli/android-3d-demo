@@ -28,6 +28,7 @@ public:
     void drawRect     (float x, float y, float w, float h, Color c);
     void drawRoundRect(float x, float y, float w, float h, float radius, Color c);
     void drawRectBorder(float x, float y, float w, float h, float thickness, Color c);
+    void drawGradientRect(float x, float y, float w, float h, Color top, Color bottom);
 
     // Text: top of the line at (x, y); fontSize = desired pixel height.
     void drawText(const std::string& text, float x, float y,

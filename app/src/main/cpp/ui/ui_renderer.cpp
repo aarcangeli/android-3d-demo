@@ -206,6 +206,21 @@ void UIRenderer::drawRect(float x, float y, float w, float h, Color c) {
     pushQuad(currentBatch(DrawMode::COLOR), x, y, w, h, 0, 0, 0, 0, c);
 }
 
+void UIRenderer::drawGradientRect(float x, float y, float w, float h,
+                                   Color top, Color bottom) {
+    if (w <= 0 || h <= 0) return;
+    Batch& b = currentBatch(DrawMode::COLOR);
+    auto base = (uint16_t)b.verts.size();
+    b.verts.push_back({x,   y,   0, 0, top.r,    top.g,    top.b,    top.a   });
+    b.verts.push_back({x+w, y,   0, 0, top.r,    top.g,    top.b,    top.a   });
+    b.verts.push_back({x+w, y+h, 0, 0, bottom.r, bottom.g, bottom.b, bottom.a});
+    b.verts.push_back({x,   y+h, 0, 0, bottom.r, bottom.g, bottom.b, bottom.a});
+    b.indices.insert(b.indices.end(), {
+        base, (uint16_t)(base+1), (uint16_t)(base+2),
+        base, (uint16_t)(base+2), (uint16_t)(base+3)
+    });
+}
+
 void UIRenderer::drawRoundRect(float x, float y, float w, float h,
                                 float radius, Color c) {
     if (c.a < 0.001f || w <= 0 || h <= 0) return;

@@ -2,6 +2,7 @@ package com.example.openglndkdemo
 
 import android.content.res.AssetManager
 import android.opengl.GLSurfaceView
+import android.os.Build
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 
@@ -14,7 +15,8 @@ class GLRenderer(
     private var frameCount  = 0
     private var lastFpsTime = 0L
 
-    override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) = nativeInit(assetManager, density)
+    override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) =
+        nativeInit(assetManager, density, android.os.Build.VERSION.SDK_INT)
     override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) = nativeResize(width, height)
 
     override fun onDrawFrame(gl: GL10?) {
@@ -41,7 +43,7 @@ class GLRenderer(
     fun touchCancel(id: Int, x: Float, y: Float) = nativeTouchCancel(id, x, y)
     fun key        (code: Int, unicode: Int, down: Boolean) = nativeKey(code, unicode, down)
 
-    private external fun nativeInit    (assetMgr: AssetManager, density: Float)
+    private external fun nativeInit    (assetMgr: AssetManager, density: Float, apiLevel: Int)
     private external fun nativeResize  (width: Int, height: Int)
     private external fun nativeDraw    ()
     private external fun nativeSetFps  (fps: String)
