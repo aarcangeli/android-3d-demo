@@ -130,7 +130,7 @@ void buildDemoScene(UISystem& sys,
         makeInfo(p, "Min SDK: 21");
         makeInfo(p, "Target SDK: 35");
         makeInfo(p, "ABI: arm64-v8a");
-        makeInfo(p, "C++ 17");
+        makeInfo(p, "C++ 20");
         makeInfo(p, "NDK r26");
         makeSep(p);
         makeSection(p, "RENDERER");
@@ -187,10 +187,6 @@ void buildDemoScene(UISystem& sys,
         });
         makeBtn(p, "Screenshot", pal::green, [pps](){
             setStatus(pps, "Screenshot!", pal::green);
-        });
-        makeBtn(p, "Toggle FPS", pal::purple, [sp, pps](){
-            sp->showFps = !sp->showFps;
-            setStatus(pps, sp->showFps ? "FPS shown" : "FPS hidden", pal::purple);
         });
 
         makeSep(p);

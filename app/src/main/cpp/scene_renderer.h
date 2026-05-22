@@ -13,14 +13,11 @@ public:
     Camera camera;
     Camera defaultCamera_;
     float  autoRotation = 0.f;
-    float  autoRotSpeed = 0.5f;
-    bool   showFps      = true;
-    std::string fpsText;
+    float  autoRotSpeed = 0.f;
 
-    // Selection state
-    bool  cubeSelected_   = false;
-    bool  showHitMarker_  = false;
-    float hitMarkerPos_[3] = {};
+    // Selection / pivot marker state
+    bool  cubeSelected_  = false;
+    bool  showHitMarker_ = false;
 
     void init(float screenW, float screenH);
     void shutdown();

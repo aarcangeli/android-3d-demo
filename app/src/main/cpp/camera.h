@@ -35,7 +35,7 @@ struct Camera {
     void clamp() {
         if (elevation >  89.f) elevation =  89.f;
         if (elevation < -89.f) elevation = -89.f;
-        if (distance  <   0.3f) distance =   0.3f;
+        if (distance  <  0.05f) distance =  0.05f;
         if (distance  > 50.f)  distance  = 50.f;
     }
 

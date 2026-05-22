@@ -252,8 +252,10 @@ void SceneRenderer::resize(float sw, float sh) {
 // ── resetView ─────────────────────────────────────────────────────────────────
 
 void SceneRenderer::resetView() {
-    camera       = defaultCamera_;
-    autoRotation = 0.f;
+    camera         = defaultCamera_;
+    autoRotation   = 0.f;
+    showHitMarker_ = false;
+    cubeSelected_  = false;
 }
 
 // ── Ray casting / tap helpers ─────────────────────────────────────────────────
@@ -337,23 +339,14 @@ void SceneRenderer::handleTap(float tx, float ty, bool isDouble) {
 
     if (isDouble) {
         if (hit) {
-            // Set orbit pivot to the world-space hit point
             camera.targetX = orig[0] + dir[0] * hitT;
             camera.targetY = orig[1] + dir[1] * hitT;
             camera.targetZ = orig[2] + dir[2] * hitT;
+            showHitMarker_ = true;
         }
     } else {
-        // Single tap: select/deselect
-        if (hit) {
-            cubeSelected_ = true;
-            showHitMarker_ = true;
-            hitMarkerPos_[0] = orig[0] + dir[0] * hitT;
-            hitMarkerPos_[1] = orig[1] + dir[1] * hitT;
-            hitMarkerPos_[2] = orig[2] + dir[2] * hitT;
-        } else {
-            cubeSelected_  = false;
-            showHitMarker_ = false;
-        }
+        // Single tap: select/deselect only
+        cubeSelected_ = hit;
     }
 }
 
@@ -456,10 +449,10 @@ void SceneRenderer::render(float rx, float ry, float rw, float rh, ui::UIRendere
         glDisableVertexAttribArray(gridAPos_);
     }
 
-    // -- Hit marker (world space; mvp = proj*view at this point) --
+    // -- Hit marker at current orbit pivot (world space; mvp = proj*view) --
     if (showHitMarker_) {
         glUniformMatrix4fv(gridUMVP_, 1, GL_FALSE, mvp);
-        float mx = hitMarkerPos_[0], my = hitMarkerPos_[1], mz = hitMarkerPos_[2];
+        float mx = camera.targetX, my = camera.targetY, mz = camera.targetZ;
         const float sz = 0.07f;
         const float mv[] = {
             mx-sz, my,    mz,     mx+sz, my,    mz,
@@ -478,14 +471,6 @@ void SceneRenderer::render(float rx, float ry, float rw, float rh, ui::UIRendere
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_SCISSOR_TEST);
     glViewport(0, 0, (GLsizei)screenW_, (GLsizei)screenH_);
-
-    // -- FPS overlay (using UIRenderer, drawn in screen-space) --
-    if (showFps && !fpsText.empty()) {
-        float fs = std::max(11.f, rh * 0.045f);
-        fs = std::min(fs, 20.f);
-        uiR.drawText(fpsText, rx + 8.f, ry + 6.f, fs,
-                     ui::Color{1.f, 1.f, 0.3f, 0.85f});
-    }
 }
 
 // ── onInput ───────────────────────────────────────────────────────────────────
@@ -527,8 +512,8 @@ bool SceneRenderer::onInput(const ui::InputEvent& e) {
         if (nPtrs_ == 1 && !blockOrbit_) {
             float ddx = e.x - prevOrbitX_;
             float ddy = e.y - prevOrbitY_;
-            camera.azimuth   += ddx * 0.25f;
-            camera.elevation -= ddy * 0.25f;
+            camera.azimuth   -= ddx * 0.25f;
+            camera.elevation += ddy * 0.25f;
             camera.clamp();
             prevOrbitX_ = e.x;
             prevOrbitY_ = e.y;

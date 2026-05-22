@@ -127,7 +127,6 @@ Java_com_example_openglndkdemo_GLRenderer_nativeKey(JNIEnv*, jobject, jint keyCo
 JNIEXPORT void JNICALL
 Java_com_example_openglndkdemo_GLRenderer_nativeSetFps(JNIEnv* env, jobject, jstring fps) {
     const char* s = env->GetStringUTFChars(fps, nullptr);
-    g_scene.fpsText = s;
     if (g_fpsLabel) g_fpsLabel->text = s;
     env->ReleaseStringUTFChars(fps, s);
 }
