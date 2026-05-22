@@ -363,12 +363,13 @@ bool SceneRenderer::onInput(const ui::InputEvent& e) {
             orbitStartX_ = e.x;
             orbitStartY_ = e.y;
         } else if (nPtrs_ == 2) {
-            // Begin pan/zoom
+            // Begin pan/zoom — mode undecided until gesture threshold
             float dx  = ptrs_[1].x - ptrs_[0].x;
             float dy  = ptrs_[1].y - ptrs_[0].y;
             prevDist_ = sqrtf(dx*dx + dy*dy);
             prevMidX_ = (ptrs_[0].x + ptrs_[1].x) * 0.5f;
             prevMidY_ = (ptrs_[0].y + ptrs_[1].y) * 0.5f;
+            twoFingerMode_ = TwoFingerMode::UNDECIDED;
         }
         return true;
     }
@@ -391,21 +392,30 @@ bool SceneRenderer::onInput(const ui::InputEvent& e) {
             float dist = sqrtf(dx*dx + dy*dy);
             float midX = (ptrs_[0].x + ptrs_[1].x) * 0.5f;
             float midY = (ptrs_[0].y + ptrs_[1].y) * 0.5f;
+            float ddx  = midX - prevMidX_;
+            float ddy  = midY - prevMidY_;
 
-            // Zoom
-            if (dist > 1e-3f && prevDist_ > 1e-3f)
-                camera.distance *= prevDist_ / dist;
-            camera.clamp();
+            // Determine gesture type on first significant motion
+            if (twoFingerMode_ == TwoFingerMode::UNDECIDED) {
+                float pinchDelta = std::abs(dist - prevDist_);
+                float panDelta   = sqrtf(ddx*ddx + ddy*ddy);
+                const float kThresh = 10.f;
+                if      (pinchDelta > kThresh) twoFingerMode_ = TwoFingerMode::ZOOM;
+                else if (panDelta   > kThresh) twoFingerMode_ = TwoFingerMode::PAN;
+            }
 
-            // Pan: move target proportional to mid-point delta
-            float panScale = camera.distance * 0.0015f;
-            float ddx = midX - prevMidX_;
-            float ddy = midY - prevMidY_;
-            float r[3], u[3];
-            camera.rightAndUp(r, u);
-            camera.targetX += (-r[0]*ddx + u[0]*ddy) * panScale;
-            camera.targetY += (-r[1]*ddx + u[1]*ddy) * panScale;
-            camera.targetZ += (-r[2]*ddx + u[2]*ddy) * panScale;
+            if (twoFingerMode_ == TwoFingerMode::ZOOM) {
+                if (dist > 1e-3f && prevDist_ > 1e-3f)
+                    camera.distance *= prevDist_ / dist;
+                camera.clamp();
+            } else if (twoFingerMode_ == TwoFingerMode::PAN) {
+                float panScale = camera.distance * 0.0015f;
+                float r[3], u[3];
+                camera.rightAndUp(r, u);
+                camera.targetX += (-r[0]*ddx + u[0]*ddy) * panScale;
+                camera.targetY += (-r[1]*ddx + u[1]*ddy) * panScale;
+                camera.targetZ += (-r[2]*ddx + u[2]*ddy) * panScale;
+            }
 
             prevDist_ = dist;
             prevMidX_ = midX;

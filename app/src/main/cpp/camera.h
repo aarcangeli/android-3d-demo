@@ -25,7 +25,7 @@ static inline void mat4Mul(const float a[16], const float b[16], float out[16]) 
 
 struct Camera {
     float azimuth   =  45.f;   // degrees, horizontal orbit
-    float elevation =  20.f;   // degrees, vertical orbit (clamped ±89°)
+    float elevation =  45.f;   // degrees, vertical orbit (clamped ±89°)
     float distance  =   5.f;   // distance from target
     float targetX   =   0.f;
     float targetY   =   0.f;

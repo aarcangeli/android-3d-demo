@@ -55,6 +55,9 @@ private:
     // Stored camera state at gesture start
     float  orbitAz0_ = 0, orbitEl0_ = 0;
     float  orbitStartX_ = 0, orbitStartY_ = 0;
+    // Two-finger gesture disambiguation
+    enum class TwoFingerMode { UNDECIDED, ZOOM, PAN };
+    TwoFingerMode twoFingerMode_ = TwoFingerMode::UNDECIDED;
 
     static GLuint compileShader(GLenum type, const char* src);
     void buildShaders();

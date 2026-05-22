@@ -78,7 +78,6 @@ Java_com_example_openglndkdemo_GLRenderer_nativeResize(JNIEnv*, jobject, jint w,
     g_screenW = w; g_screenH = h;
     glViewport(0, 0, w, h);
     g_scene.resize((float)w, (float)h);
-    g_ui.resize((float)w, (float)h);
 
     bool newCompact = (g_density > 0.f) ? ((float)w / g_density < 480.f) : false;
     if (g_needBuild || newCompact != g_isCompact) {
@@ -86,6 +85,7 @@ Java_com_example_openglndkdemo_GLRenderer_nativeResize(JNIEnv*, jobject, jint w,
         g_needBuild = false;
         rebuildUI((float)w);
     }
+    g_ui.resize((float)w, (float)h);  // always last: applies layout to the current tree
     LOGI("Resize %dx%d", w, h);
 }
 
