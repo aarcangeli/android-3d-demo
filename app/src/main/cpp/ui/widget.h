@@ -160,13 +160,16 @@ private:
 
 class GLWidget : public Widget {
 public:
-    // Callback receives the widget bounds so it can set up the scissor / viewport.
-    std::function<void(float x, float y, float w, float h)> onRender;
+    // Callback receives the widget bounds + UIRenderer so it can set up the scissor / viewport.
+    std::function<void(float x, float y, float w, float h, UIRenderer& r)> onRender;
+
+    std::function<bool(const InputEvent&)> inputHandler;
 
     Color borderColor = Color{1,1,1,0.15f};
     float borderWidth = 1.f;
 
     void draw(UIRenderer& r) override;
+    bool onInput(const InputEvent& e) override;
 };
 
 // ─── ScrollContainer ─────────────────────────────────────────────────────────
@@ -216,6 +219,38 @@ private:
     float thumbTop() const;
     float contentW() const { return showBar() ? w - scrollbarW - scrollbarPad * 2.f : w; }
     void  clampScroll();
+};
+
+// ─── TabContainer ─────────────────────────────────────────────────────────────
+// Tab bar at the bottom; shows one content pane at a time.
+
+class TabContainer : public Widget {
+public:
+    float tabBarH     = 36.f;
+    Color tabBarBg    = Color{0.08f, 0.09f, 0.13f, 1.f};
+    Color activeColor = Colors::accent;
+    Color inactiveColor = Color{0.12f, 0.14f, 0.20f, 1.f};
+    Color textColor   = Colors::white;
+    float fontSize    = 14.f;
+
+    // Creates a new tab. Returns its content container to populate.
+    Container* addTab(const std::string& label);
+    void setActive(int i);
+    int  active() const { return activeTab_; }
+
+    void draw(UIRenderer& r) override;
+    bool onInput(const InputEvent& e) override;
+    void doLayout() override;
+
+private:
+    struct Tab {
+        std::string                label;
+        std::unique_ptr<Container> content;
+        Button*                    button_ = nullptr;
+    };
+    std::vector<Tab> tabs_;
+    int              activeTab_ = 0;
+    Container        tabBar_;
 };
 
 // ─── LinearLayout ────────────────────────────────────────────────────────────
