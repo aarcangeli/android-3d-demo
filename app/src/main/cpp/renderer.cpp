@@ -1,7 +1,16 @@
 #include <jni.h>
 #include <GLES2/gl2.h>
+#include <android/asset_manager.h>
+#include <android/asset_manager_jni.h>
 #include <android/log.h>
 #include <cmath>
+#include <cstring>
+#include <string>
+
+#include "ui/ui_system.h"
+#include "ui/widget.h"
+#include "demo_scene.h"
+#include "scene_renderer.h"
 
 #define LOG_TAG "OpenGLNDK"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  LOG_TAG, __VA_ARGS__)
@@ -9,139 +18,118 @@
 
 namespace {
 
-const char* VERT_SRC = R"glsl(
-attribute vec2 aPos;
-attribute vec4 aColor;
-uniform vec2 uScale;
-varying vec4 vColor;
-void main() {
-    vColor = aColor;
-    gl_Position = vec4(aPos * uScale, 0.0, 1.0);
-}
-)glsl";
+int    g_screenW  = 0, g_screenH = 0;
+float  g_density  = 1.f;
+int    g_apiLevel = 21;
+bool   g_needBuild = false;
+bool   g_isCompact = false;
 
-const char* FRAG_SRC = R"glsl(
-precision mediump float;
-varying vec4 vColor;
-void main() {
-    gl_FragColor = vColor;
-}
-)glsl";
+ui::UISystem  g_ui;
+ui::Label*    g_fpsLabel    = nullptr;
+ui::Label*    g_angleLabel  = nullptr;
+ui::Label*    g_statusLabel = nullptr;
 
-GLuint g_program = 0;
-GLint  g_aPos    = -1;
-GLint  g_aColor  = -1;
-GLint  g_uScale  = -1;
-float  g_scaleX  = 1.0f;
-float  g_scaleY  = 1.0f;
-float  g_angle   = 0.0f;
+scene::SceneRenderer g_scene;
+ui::GLWidget*        g_glWidget = nullptr;
 
-GLuint compileShader(GLenum type, const char* src) {
-    GLuint s = glCreateShader(type);
-    glShaderSource(s, 1, &src, nullptr);
-    glCompileShader(s);
-    GLint ok;
-    glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
-    if (!ok) {
-        char buf[512];
-        glGetShaderInfoLog(s, sizeof(buf), nullptr, buf);
-        LOGE("Shader compile error: %s", buf);
-        glDeleteShader(s);
-        return 0;
+static void wireGLWidget() {
+    if (g_glWidget) {
+        g_glWidget->onRender = [](float rx, float ry, float rw, float rh, ui::UIRenderer& uiR) {
+            g_scene.render(rx, ry, rw, rh, uiR);
+        };
+        g_glWidget->inputHandler = [](const ui::InputEvent& e) -> bool {
+            return g_scene.onInput(e);
+        };
     }
-    return s;
+}
+
+static void rebuildUI(float screenW) {
+    g_ui.root().clearChildren();
+    g_fpsLabel = g_angleLabel = g_statusLabel = nullptr;
+    g_glWidget = nullptr;
+    buildDemoScene(g_ui, g_density, screenW, g_apiLevel,
+                   g_scene, g_glWidget,
+                   g_fpsLabel, g_angleLabel, g_statusLabel);
+    wireGLWidget();
 }
 
 } // namespace
 
+// ── JNI ───────────────────────────────────────────────────────────────────────
+
 extern "C" {
 
 JNIEXPORT void JNICALL
-Java_com_example_openglndkdemo_GLRenderer_nativeInit(JNIEnv*, jobject) {
-    GLuint vert = compileShader(GL_VERTEX_SHADER,   VERT_SRC);
-    GLuint frag = compileShader(GL_FRAGMENT_SHADER, FRAG_SRC);
+Java_com_example_openglndkdemo_GLRenderer_nativeInit(JNIEnv* env, jobject,
+                                                     jobject jAssetMgr, jfloat density, jint apiLevel) {
+    g_density  = density;
+    g_apiLevel = (int)apiLevel;
+    g_needBuild = true;   // defer UI build to nativeResize (when screen size is known)
 
-    g_program = glCreateProgram();
-    glAttachShader(g_program, vert);
-    glAttachShader(g_program, frag);
-    glLinkProgram(g_program);
-    glDeleteShader(vert);
-    glDeleteShader(frag);
-
-    GLint ok;
-    glGetProgramiv(g_program, GL_LINK_STATUS, &ok);
-    if (!ok) {
-        char buf[512];
-        glGetProgramInfoLog(g_program, sizeof(buf), nullptr, buf);
-        LOGE("Program link error: %s", buf);
-        return;
-    }
-
-    g_aPos   = glGetAttribLocation(g_program, "aPos");
-    g_aColor = glGetAttribLocation(g_program, "aColor");
-    g_uScale = glGetUniformLocation(g_program, "uScale");
-    glClearColor(0.05f, 0.05f, 0.15f, 1.0f);
-    LOGI("GL init OK  program=%u aPos=%d aColor=%d uScale=%d", g_program, g_aPos, g_aColor, g_uScale);
+    AAssetManager* am = AAssetManager_fromJava(env, jAssetMgr);
+    g_ui.init(am, density);
+    g_scene.init((float)g_screenW, (float)g_screenH);
+    glClearColor(0.08f, 0.09f, 0.12f, 1.f);
+    LOGI("GL init OK");
 }
 
 JNIEXPORT void JNICALL
 Java_com_example_openglndkdemo_GLRenderer_nativeResize(JNIEnv*, jobject, jint w, jint h) {
+    g_screenW = w; g_screenH = h;
     glViewport(0, 0, w, h);
-    // Scale the smaller NDC axis so the triangle always appears undistorted.
-    // The larger screen dimension maps to the full [-1,1] NDC range;
-    // the smaller one is compressed proportionally.
-    if (w >= h) {
-        g_scaleX = static_cast<float>(h) / w;
-        g_scaleY = 1.0f;
-    } else {
-        g_scaleX = 1.0f;
-        g_scaleY = static_cast<float>(w) / h;
+    g_scene.resize((float)w, (float)h);
+
+    bool newCompact = (g_density > 0.f) ? ((float)w / g_density < 480.f) : false;
+    if (g_needBuild || newCompact != g_isCompact) {
+        g_isCompact = newCompact;
+        g_needBuild = false;
+        rebuildUI((float)w);
     }
-    LOGI("Viewport %dx%d  scale=(%.3f, %.3f)", w, h, g_scaleX, g_scaleY);
+    g_ui.resize((float)w, (float)h);  // always last: applies layout to the current tree
+    LOGI("Resize %dx%d", w, h);
 }
 
 JNIEXPORT void JNICALL
 Java_com_example_openglndkdemo_GLRenderer_nativeDraw(JNIEnv*, jobject) {
-    g_angle += 1.0f;
-    if (g_angle >= 360.0f) g_angle -= 360.0f;
+    g_scene.autoRotation += g_scene.autoRotSpeed;
+    if (g_scene.autoRotation >= 360.f) g_scene.autoRotation -= 360.f;
 
-    const float rad = g_angle * (3.14159265f / 180.0f);
-    const float c = cosf(rad);
-    const float s = sinf(rad);
-
-    // Equilateral triangle inscribed in unit circle, radius 0.9
-    const float bx[3] = {  0.0f,   0.779f, -0.779f };
-    const float by[3] = {  0.9f,  -0.45f,  -0.45f  };
-    const float col[3][4] = {
-        { 1.0f, 0.25f, 0.25f, 1.0f },
-        { 0.25f, 1.0f, 0.25f, 1.0f },
-        { 0.25f, 0.25f, 1.0f, 1.0f },
-    };
-
-    float v[3][6];
-    for (int i = 0; i < 3; i++) {
-        v[i][0] = c * bx[i] - s * by[i];
-        v[i][1] = s * bx[i] + c * by[i];
-        v[i][2] = col[i][0];
-        v[i][3] = col[i][1];
-        v[i][4] = col[i][2];
-        v[i][5] = col[i][3];
+    if (g_angleLabel) {
+        char buf[32];
+        snprintf(buf, sizeof(buf), "Angle: %.1f", g_scene.autoRotation);
+        g_angleLabel->text = buf;
     }
-
+    glClearColor(0.08f, 0.09f, 0.12f, 1.f);
     glClear(GL_COLOR_BUFFER_BIT);
-    glUseProgram(g_program);
-    glUniform2f(g_uScale, g_scaleX, g_scaleY);
+    g_ui.draw();
+}
 
-    const int stride = 6 * sizeof(float);
-    glVertexAttribPointer(g_aPos,   2, GL_FLOAT, GL_FALSE, stride, &v[0][0]);
-    glEnableVertexAttribArray(g_aPos);
-    glVertexAttribPointer(g_aColor, 4, GL_FLOAT, GL_FALSE, stride, &v[0][2]);
-    glEnableVertexAttribArray(g_aColor);
-
-    glDrawArrays(GL_TRIANGLES, 0, 3);
-
-    glDisableVertexAttribArray(g_aPos);
-    glDisableVertexAttribArray(g_aColor);
+JNIEXPORT void JNICALL
+Java_com_example_openglndkdemo_GLRenderer_nativeTouchDown(JNIEnv*, jobject, jint id, jfloat x, jfloat y) {
+    g_ui.onTouchDown(id, x, y);
+}
+JNIEXPORT void JNICALL
+Java_com_example_openglndkdemo_GLRenderer_nativeTouchMove(JNIEnv*, jobject, jint id, jfloat x, jfloat y) {
+    g_ui.onTouchMove(id, x, y);
+}
+JNIEXPORT void JNICALL
+Java_com_example_openglndkdemo_GLRenderer_nativeTouchUp(JNIEnv*, jobject, jint id, jfloat x, jfloat y) {
+    g_ui.onTouchUp(id, x, y);
+}
+JNIEXPORT void JNICALL
+Java_com_example_openglndkdemo_GLRenderer_nativeTouchCancel(JNIEnv*, jobject, jint id, jfloat x, jfloat y) {
+    g_ui.onTouchCancel(id, x, y);
+}
+JNIEXPORT void JNICALL
+Java_com_example_openglndkdemo_GLRenderer_nativeKey(JNIEnv*, jobject, jint keyCode, jint unicode, jboolean down) {
+    g_ui.onKey(keyCode, unicode, down);
+}
+JNIEXPORT void JNICALL
+Java_com_example_openglndkdemo_GLRenderer_nativeSetFps(JNIEnv* env, jobject, jstring fps) {
+    const char* s = env->GetStringUTFChars(fps, nullptr);
+    g_scene.fpsText = s;
+    if (g_fpsLabel) g_fpsLabel->text = s;
+    env->ReleaseStringUTFChars(fps, s);
 }
 
 } // extern "C"
