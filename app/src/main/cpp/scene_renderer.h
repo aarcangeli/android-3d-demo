@@ -76,6 +76,9 @@ private:
     // Orbit (single finger)
     float prevOrbitX_ = 0, prevOrbitY_ = 0;
     bool  blockOrbit_ = false;
+    // Double-tap + drag-vertical zoom
+    bool  dtZoom_    = false;
+    float dtZoomY_   = 0;
 
     // Two-finger: exclusive zoom vs pan
     float prevDist_ = 0, prevMidX_ = 0, prevMidY_ = 0;

@@ -175,7 +175,7 @@ void SceneRenderer::buildSphereMesh() {
         for (int sl = 0; sl < slices; ++sl) {
             uint16_t a=(uint16_t)(st*(slices+1)+sl), b=(uint16_t)(a+1),
                      c=(uint16_t)(a+(slices+1)),      d=(uint16_t)(c+1);
-            idx.insert(idx.end(), {a,c,b, b,c,d});
+            idx.insert(idx.end(), {a,b,c, b,d,c});
         }
     sphereMesh_ = buildMeshFromVerts(v, idx);
 }
@@ -195,11 +195,10 @@ void SceneRenderer::buildCylinderMesh() {
         pushV(v, R*nx, +H, R*nz,  nx,0,nz, 0.25f,0.85f,0.70f);
         pushV(v, R*nx, -H, R*nz,  nx,0,nz, 0.25f,0.65f,0.35f);
     }
-    uint16_t sideBase = 0;
     for (int i = 0; i < segs; ++i) {
         uint16_t a=(uint16_t)(2*i), b=(uint16_t)(2*i+1),
                  c=(uint16_t)(2*(i+1)), d=(uint16_t)(2*(i+1)+1);
-        idx.insert(idx.end(), {a,b,c, b,d,c});
+        idx.insert(idx.end(), {a,c,b, c,d,b});
     }
 
     // Top cap
@@ -211,7 +210,7 @@ void SceneRenderer::buildCylinderMesh() {
         pushV(v, R*cosf(a),+H,R*sinf(a), 0,1,0, 0.25f,0.90f,0.75f);
     }
     for (int i = 0; i < segs; ++i)
-        idx.insert(idx.end(), {topCenter,(uint16_t)(topRingStart+i+1),(uint16_t)(topRingStart+i)});
+        idx.insert(idx.end(), {topCenter,(uint16_t)(topRingStart+i),(uint16_t)(topRingStart+i+1)});
 
     // Bottom cap
     uint16_t botCenter = (uint16_t)(v.size()/10);
@@ -222,7 +221,7 @@ void SceneRenderer::buildCylinderMesh() {
         pushV(v, R*cosf(a),-H,R*sinf(a), 0,-1,0, 0.25f,0.60f,0.30f);
     }
     for (int i = 0; i < segs; ++i)
-        idx.insert(idx.end(), {botCenter,(uint16_t)(botRingStart+i),(uint16_t)(botRingStart+i+1)});
+        idx.insert(idx.end(), {botCenter,(uint16_t)(botRingStart+i+1),(uint16_t)(botRingStart+i)});
 
     cylinderMesh_ = buildMeshFromVerts(v, idx);
 }
@@ -561,35 +560,68 @@ void SceneRenderer::render(float rx, float ry, float rw, float rh, ui::UIRendere
             case ObjType::CYLINDER: drawMesh(cylinderMesh_); break;
         }
 
-        // Selection wireframe
+        // Selection wireframe — drawn slightly outside the mesh, GL_LEQUAL to avoid z-fight
         if (obj.selected) {
-            const float S=0.8f*obj.scale;
-            // Build bounding wireframe in object-type-appropriate way using grid shader
             glUseProgram(gridProg_);
+            glDepthFunc(GL_LEQUAL);
             glUniformMatrix4fv(gridUMVP_,1,GL_FALSE,objMVP);
             glUniform4f(gridUColor_,0.05f,0.85f,1.f,1.f);
             glEnableVertexAttribArray(gridAPos_);
-            if (obj.type==ObjType::CUBE){
+
+            if (obj.type == ObjType::CUBE) {
+                const float S=0.83f;  // slightly outside 0.80 mesh
                 const float wv[]={
-                    -S,-S,-S, S,-S,-S,  S,-S,-S, S,-S,S,  S,-S,S,-S,-S,S,  -S,-S,S,-S,-S,-S,
-                    -S, S,-S, S, S,-S,  S, S,-S, S, S,S,  S, S,S,-S, S,S,  -S, S,S,-S, S,-S,
-                    -S,-S,-S,-S, S,-S,  S,-S,-S, S, S,-S, S,-S, S, S, S,S, -S,-S, S,-S, S,S,
+                    -S,-S,-S, S,-S,-S,  S,-S,-S, S,-S, S,  S,-S, S,-S,-S, S,  -S,-S, S,-S,-S,-S,
+                    -S, S,-S, S, S,-S,  S, S,-S, S, S, S,  S, S, S,-S, S, S,  -S, S, S,-S, S,-S,
+                    -S,-S,-S,-S, S,-S,  S,-S,-S, S, S,-S,  S,-S, S, S, S, S,  -S,-S, S,-S, S, S,
                 };
                 glVertexAttribPointer(gridAPos_,3,GL_FLOAT,GL_FALSE,0,wv);
                 glDrawArrays(GL_LINES,0,24);
-            } else {
-                // Circle ring at equator
-                const int N=32;
-                float ring[N*6]; // N line segments
-                for(int k=0;k<N;++k){
-                    float a0=2.f*(float)M_PI*k/N, a1=2.f*(float)M_PI*(k+1)/N;
-                    ring[k*6+0]=S*cosf(a0); ring[k*6+1]=0; ring[k*6+2]=S*sinf(a0);
-                    ring[k*6+3]=S*cosf(a1); ring[k*6+4]=0; ring[k*6+5]=S*sinf(a1);
+            } else if (obj.type == ObjType::SPHERE) {
+                // 5 latitude rings + 8 longitude arcs
+                const float Rw=0.83f;
+                const int N_LAT=5, N_LON=8, SEG=32;
+                std::vector<float> wv;
+                wv.reserve((N_LAT-1 + N_LON)*SEG*6);
+                for (int li=1; li<N_LAT; ++li) {
+                    float phi=(float)M_PI*li/N_LAT, y=Rw*cosf(phi), r=Rw*sinf(phi);
+                    for (int si=0;si<SEG;++si){
+                        float a0=2.f*(float)M_PI*si/SEG, a1=2.f*(float)M_PI*(si+1)/SEG;
+                        wv.insert(wv.end(),{r*cosf(a0),y,r*sinf(a0), r*cosf(a1),y,r*sinf(a1)});
+                    }
                 }
-                glVertexAttribPointer(gridAPos_,3,GL_FLOAT,GL_FALSE,0,ring);
-                glDrawArrays(GL_LINES,0,N*2);
+                for (int li=0; li<N_LON; ++li) {
+                    float th=2.f*(float)M_PI*li/N_LON;
+                    float ct=cosf(th), st=sinf(th);
+                    for (int si=0;si<SEG;++si){
+                        float p0=(float)M_PI*si/SEG, p1=(float)M_PI*(si+1)/SEG;
+                        wv.insert(wv.end(),{Rw*sinf(p0)*ct,Rw*cosf(p0),Rw*sinf(p0)*st,
+                                            Rw*sinf(p1)*ct,Rw*cosf(p1),Rw*sinf(p1)*st});
+                    }
+                }
+                glVertexAttribPointer(gridAPos_,3,GL_FLOAT,GL_FALSE,0,wv.data());
+                glDrawArrays(GL_LINES,0,(GLsizei)(wv.size()/3));
+            } else { // CYLINDER
+                // Top ring + bottom ring + 8 vertical lines
+                const float Rw=0.63f, Hw=0.84f;
+                const int CSEGS=32, VLINES=8;
+                std::vector<float> wv;
+                wv.reserve((CSEGS*2*2 + VLINES)*6);
+                for (float hw : {Hw,-Hw})
+                    for (int si=0;si<CSEGS;++si){
+                        float a0=2.f*(float)M_PI*si/CSEGS, a1=2.f*(float)M_PI*(si+1)/CSEGS;
+                        wv.insert(wv.end(),{Rw*cosf(a0),hw,Rw*sinf(a0), Rw*cosf(a1),hw,Rw*sinf(a1)});
+                    }
+                for (int vi=0;vi<VLINES;++vi){
+                    float a=2.f*(float)M_PI*vi/VLINES;
+                    wv.insert(wv.end(),{Rw*cosf(a),Hw,Rw*sinf(a), Rw*cosf(a),-Hw,Rw*sinf(a)});
+                }
+                glVertexAttribPointer(gridAPos_,3,GL_FLOAT,GL_FALSE,0,wv.data());
+                glDrawArrays(GL_LINES,0,(GLsizei)(wv.size()/3));
             }
+
             glDisableVertexAttribArray(gridAPos_);
+            glDepthFunc(GL_LESS);
             glUseProgram(objProg_);
         }
     }
@@ -636,9 +668,15 @@ bool SceneRenderer::onInput(const ui::InputEvent& e) {
         ptrs_[slot]={e.pointerId,e.x,e.y}; nPtrs_++;
 
         if(nPtrs_==1&&!blockOrbit_){
-            prevOrbitX_=e.x; prevOrbitY_=e.y;
-            tapStartX_=e.x; tapStartY_=e.y;
-            tapStartMs_=nowMs(); tapMoved_=false;
+            int64_t now=nowMs();
+            float dxL=e.x-lastTapX_, dyL=e.y-lastTapY_;
+            // Second tap within window → enter double-tap-drag-zoom mode
+            dtZoom_ = (lastTapMs_>0) && (now-lastTapMs_)<300LL
+                      && sqrtf(dxL*dxL+dyL*dyL)<40.f;
+            dtZoomY_     = e.y;
+            prevOrbitX_  = e.x; prevOrbitY_  = e.y;
+            tapStartX_   = e.x; tapStartY_   = e.y;
+            tapStartMs_  = now; tapMoved_    = false;
         } else if(nPtrs_==2){
             blockOrbit_=true; tapMoved_=true;
             float dx=ptrs_[1].x-ptrs_[0].x, dy=ptrs_[1].y-ptrs_[0].y;
@@ -656,9 +694,15 @@ bool SceneRenderer::onInput(const ui::InputEvent& e) {
 
         if(nPtrs_==1&&!blockOrbit_){
             float ddx=e.x-prevOrbitX_, ddy=e.y-prevOrbitY_;
-            camera.azimuth  -=ddx*0.25f;
-            camera.elevation+=ddy*0.25f;
-            camera.clamp();
+            if (dtZoom_) {
+                // Double-tap + drag vertical → zoom
+                camera.distance *= 1.f + ddy * 0.004f;
+                camera.clamp();
+            } else {
+                camera.azimuth  -= ddx * 0.25f;
+                camera.elevation += ddy * 0.25f;
+                camera.clamp();
+            }
             prevOrbitX_=e.x; prevOrbitY_=e.y;
             float md=sqrtf((e.x-tapStartX_)*(e.x-tapStartX_)+(e.y-tapStartY_)*(e.y-tapStartY_));
             if(md>10.f)tapMoved_=true;
@@ -707,6 +751,7 @@ bool SceneRenderer::onInput(const ui::InputEvent& e) {
                     if(isDouble){lastTapMs_=0;}
                     else{lastTapMs_=now;lastTapX_=e.x;lastTapY_=e.y;}
                 }
+                dtZoom_=false;
             }
             break;
         }
