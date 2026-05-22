@@ -19,6 +19,10 @@
 namespace {
 
 int    g_screenW  = 0, g_screenH = 0;
+float  g_density  = 1.f;
+int    g_apiLevel = 21;
+bool   g_needBuild = false;
+bool   g_isCompact = false;
 
 ui::UISystem  g_ui;
 ui::Label*    g_fpsLabel    = nullptr;
@@ -27,6 +31,27 @@ ui::Label*    g_statusLabel = nullptr;
 
 scene::SceneRenderer g_scene;
 ui::GLWidget*        g_glWidget = nullptr;
+
+static void wireGLWidget() {
+    if (g_glWidget) {
+        g_glWidget->onRender = [](float rx, float ry, float rw, float rh, ui::UIRenderer& uiR) {
+            g_scene.render(rx, ry, rw, rh, uiR);
+        };
+        g_glWidget->inputHandler = [](const ui::InputEvent& e) -> bool {
+            return g_scene.onInput(e);
+        };
+    }
+}
+
+static void rebuildUI(float screenW) {
+    g_ui.root().clearChildren();
+    g_fpsLabel = g_angleLabel = g_statusLabel = nullptr;
+    g_glWidget = nullptr;
+    buildDemoScene(g_ui, g_density, screenW, g_apiLevel,
+                   g_scene, g_glWidget,
+                   g_fpsLabel, g_angleLabel, g_statusLabel);
+    wireGLWidget();
+}
 
 } // namespace
 
@@ -37,25 +62,12 @@ extern "C" {
 JNIEXPORT void JNICALL
 Java_com_example_openglndkdemo_GLRenderer_nativeInit(JNIEnv* env, jobject,
                                                      jobject jAssetMgr, jfloat density, jint apiLevel) {
+    g_density  = density;
+    g_apiLevel = (int)apiLevel;
+    g_needBuild = true;   // defer UI build to nativeResize (when screen size is known)
+
     AAssetManager* am = AAssetManager_fromJava(env, jAssetMgr);
-    g_ui.root().clearChildren();
-    g_fpsLabel = g_angleLabel = g_statusLabel = nullptr;
-    g_glWidget = nullptr;
-
     g_ui.init(am, density);
-    buildDemoScene(g_ui, density, (float)g_screenW, (int)apiLevel,
-                   g_scene, g_glWidget,
-                   g_fpsLabel, g_angleLabel, g_statusLabel);
-
-    if (g_glWidget) {
-        g_glWidget->onRender = [](float rx, float ry, float rw, float rh, ui::UIRenderer& uiR) {
-            g_scene.render(rx, ry, rw, rh, uiR);
-        };
-        g_glWidget->inputHandler = [](const ui::InputEvent& e) -> bool {
-            return g_scene.onInput(e);
-        };
-    }
-
     g_scene.init((float)g_screenW, (float)g_screenH);
     glClearColor(0.08f, 0.09f, 0.12f, 1.f);
     LOGI("GL init OK");
@@ -67,6 +79,13 @@ Java_com_example_openglndkdemo_GLRenderer_nativeResize(JNIEnv*, jobject, jint w,
     glViewport(0, 0, w, h);
     g_scene.resize((float)w, (float)h);
     g_ui.resize((float)w, (float)h);
+
+    bool newCompact = (g_density > 0.f) ? ((float)w / g_density < 480.f) : false;
+    if (g_needBuild || newCompact != g_isCompact) {
+        g_isCompact = newCompact;
+        g_needBuild = false;
+        rebuildUI((float)w);
+    }
     LOGI("Resize %dx%d", w, h);
 }
 

@@ -141,6 +141,17 @@ void ScrollContainer::doLayout() {
 
 void ScrollContainer::draw(UIRenderer& r) {
     if (!visible) return;
+    // Fling inertia
+    if (drag_ == DragState::NONE && std::abs(velY_) > 0.5f) {
+        float maxScroll = std::max(0.f, contentH_ - h);
+        scrollY_ += velY_;
+        if      (scrollY_ < 0.f)           { scrollY_ = 0.f;        velY_ = 0.f; }
+        else if (scrollY_ > maxScroll)     { scrollY_ = maxScroll;  velY_ = 0.f; }
+        else                               { velY_ *= 0.92f; }
+        doLayout();
+    } else if (drag_ == DragState::NONE && velY_ != 0.f) {
+        velY_ = 0.f;
+    }
     // Spring-back animation for overscroll
     if (drag_ == DragState::NONE && std::abs(overScrollY_) > 0.3f) {
         float decay = (overscrollMode == OverscrollMode::STRETCH) ? 0.55f : 0.68f;
@@ -221,6 +232,8 @@ bool ScrollContainer::onInput(const InputEvent& e) {
         dragStartY_  = e.y;
         dragScrollY_ = scrollY_;
         drag_        = DragState::TENTATIVE;
+        prevTouchY_  = e.y;
+        velY_        = 0.f;
         content_.onInput(e);
         return true;
     }
@@ -233,6 +246,11 @@ bool ScrollContainer::onInput(const InputEvent& e) {
             content_.onInput(cancel);
         }
         if (drag_ == DragState::SCROLLING) {
+            // Track velocity (positive velY_ = scrolling content down)
+            float rawVel = prevTouchY_ - e.y;
+            velY_ = velY_ * 0.6f + rawVel * 0.4f;
+            prevTouchY_ = e.y;
+
             float raw      = dragScrollY_ - dy;
             float maxScroll = std::max(0.f, contentH_ - h);
             if (raw < 0.f) {
@@ -247,6 +265,7 @@ bool ScrollContainer::onInput(const InputEvent& e) {
             }
             doLayout();
         } else {
+            prevTouchY_ = e.y;
             content_.onInput(e);
         }
         return true;
@@ -353,6 +372,20 @@ Container* TabContainer::addTab(const std::string& label) {
 
 void TabContainer::setActive(int i) {
     if (i < 0 || i >= (int)tabs_.size()) return;
+    if (collapseOnRetap && i == activeTab_ && contentVisible_) {
+        // Collapse: shrink to tab bar only
+        contentVisible_ = false;
+        savedPrefH_     = prefH;
+        prefH           = tabBarH;
+        needsRelayout_  = true;
+        return;
+    }
+    // Expand (possibly switching tab at the same time)
+    if (!contentVisible_) {
+        contentVisible_ = true;
+        prefH           = savedPrefH_;
+        needsRelayout_  = true;
+    }
     activeTab_ = i;
     for (int j = 0; j < (int)tabs_.size(); ++j) {
         if (!tabs_[j].button_) continue;
@@ -374,8 +407,12 @@ void TabContainer::doLayout() {
 
 void TabContainer::draw(UIRenderer& r) {
     if (!visible) return;
+    if (needsRelayout_ && parent) {
+        needsRelayout_ = false;
+        parent->doLayout();
+    }
     tabBar_.draw(r);
-    if (activeTab_ >= 0 && activeTab_ < (int)tabs_.size())
+    if (contentVisible_ && activeTab_ >= 0 && activeTab_ < (int)tabs_.size())
         if (tabs_[activeTab_].content) tabs_[activeTab_].content->draw(r);
 }
 

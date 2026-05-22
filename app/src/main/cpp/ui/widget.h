@@ -210,6 +210,8 @@ private:
     int       dragId_      = -1;
     float     dragStartY_  = 0.f;
     float     dragScrollY_ = 0.f;
+    float     velY_        = 0.f;
+    float     prevTouchY_  = 0.f;
 
     bool  showBar()  const { return contentH_ > h + 0.5f; }
     float barX()     const { return x + w - scrollbarW - scrollbarPad; }
@@ -223,6 +225,7 @@ private:
 
 // ─── TabContainer ─────────────────────────────────────────────────────────────
 // Tab bar at the bottom; shows one content pane at a time.
+// Tapping the active tab collapses the panel (if collapseOnRetap is true).
 
 class TabContainer : public Widget {
 public:
@@ -232,6 +235,7 @@ public:
     Color inactiveColor = Color{0.12f, 0.14f, 0.20f, 1.f};
     Color textColor   = Colors::white;
     float fontSize    = 14.f;
+    bool  collapseOnRetap = true;
 
     // Creates a new tab. Returns its content container to populate.
     Container* addTab(const std::string& label);
@@ -249,7 +253,10 @@ private:
         Button*                    button_ = nullptr;
     };
     std::vector<Tab> tabs_;
-    int              activeTab_ = 0;
+    int              activeTab_      = 0;
+    bool             contentVisible_ = true;
+    float            savedPrefH_     = 0.f;
+    bool             needsRelayout_  = false;
     Container        tabBar_;
 };
 

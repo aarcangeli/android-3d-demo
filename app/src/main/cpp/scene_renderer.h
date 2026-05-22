@@ -44,6 +44,7 @@ private:
     GLuint cubeVBO_ = 0, cubeIBO_ = 0;
     GLuint gridVBO_ = 0;
     int    gridNVerts_ = 0;
+    GLuint axisVBO_ = 0;
 
     // Touch state (up to 2 pointers)
     struct Ptr { int id=-1; float x=0,y=0; };
@@ -59,6 +60,7 @@ private:
     void buildShaders();
     void buildCubeGeometry();
     void buildGridGeometry();
+    void buildAxisGeometry();
 };
 
 } // namespace scene

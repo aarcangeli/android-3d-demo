@@ -166,11 +166,11 @@ void SceneRenderer::buildCubeGeometry() {
         int base = f * 4;
         int ib   = f * 6;
         idx[ib+0] = (uint16_t)(base+0);
-        idx[ib+1] = (uint16_t)(base+1);
-        idx[ib+2] = (uint16_t)(base+2);
+        idx[ib+1] = (uint16_t)(base+2);
+        idx[ib+2] = (uint16_t)(base+1);
         idx[ib+3] = (uint16_t)(base+0);
-        idx[ib+4] = (uint16_t)(base+2);
-        idx[ib+5] = (uint16_t)(base+3);
+        idx[ib+4] = (uint16_t)(base+3);
+        idx[ib+5] = (uint16_t)(base+2);
     }
 
     glGenBuffers(1, &cubeVBO_);
@@ -201,6 +201,21 @@ void SceneRenderer::buildGridGeometry() {
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
+// ── buildAxisGeometry ─────────────────────────────────────────────────────────
+
+void SceneRenderer::buildAxisGeometry() {
+    // 6 vertices: X/Y/Z positive axes, 2 units each, origin→tip
+    const float v[] = {
+        0.f, 0.f, 0.f,  2.f, 0.f, 0.f,   // X
+        0.f, 0.f, 0.f,  0.f, 2.f, 0.f,   // Y
+        0.f, 0.f, 0.f,  0.f, 0.f, 2.f,   // Z
+    };
+    glGenBuffers(1, &axisVBO_);
+    glBindBuffer(GL_ARRAY_BUFFER, axisVBO_);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(v), v, GL_STATIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
+
 // ── init / shutdown / resize ──────────────────────────────────────────────────
 
 void SceneRenderer::init(float sw, float sh) {
@@ -210,6 +225,7 @@ void SceneRenderer::init(float sw, float sh) {
     buildShaders();
     buildCubeGeometry();
     buildGridGeometry();
+    buildAxisGeometry();
     defaultCamera_ = camera;
 }
 
@@ -219,6 +235,7 @@ void SceneRenderer::shutdown() {
     if (cubeVBO_)  { glDeleteBuffers(1, &cubeVBO_); cubeVBO_ = 0; }
     if (cubeIBO_)  { glDeleteBuffers(1, &cubeIBO_); cubeIBO_ = 0; }
     if (gridVBO_)  { glDeleteBuffers(1, &gridVBO_); gridVBO_ = 0; }
+    if (axisVBO_)  { glDeleteBuffers(1, &axisVBO_); axisVBO_ = 0; }
 }
 
 void SceneRenderer::resize(float sw, float sh) {
@@ -301,6 +318,14 @@ void SceneRenderer::render(float rx, float ry, float rw, float rh, ui::UIRendere
     glEnableVertexAttribArray(gridAPos_);
     glVertexAttribPointer(gridAPos_, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
     glDrawArrays(GL_LINES, 0, gridNVerts_);
+
+    // -- Draw RGB axes (positive only: X=red, Y=green, Z=blue) --
+    glBindBuffer(GL_ARRAY_BUFFER, axisVBO_);
+    glVertexAttribPointer(gridAPos_, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    glUniform4f(gridUColor_, 1.00f, 0.22f, 0.22f, 1.f); glDrawArrays(GL_LINES, 0, 2);  // X red
+    glUniform4f(gridUColor_, 0.22f, 1.00f, 0.22f, 1.f); glDrawArrays(GL_LINES, 2, 2);  // Y green
+    glUniform4f(gridUColor_, 0.22f, 0.45f, 1.00f, 1.f); glDrawArrays(GL_LINES, 4, 2);  // Z blue
+
     glDisableVertexAttribArray(gridAPos_);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
