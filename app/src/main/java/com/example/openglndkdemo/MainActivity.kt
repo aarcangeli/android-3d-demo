@@ -23,7 +23,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        renderer = GLRenderer(assets) { /* FPS is updated natively via nativeSetFps */ }
+        renderer = GLRenderer(assets, resources.displayMetrics.density) { /* FPS updated natively */ }
 
         glView = object : GLSurfaceView(this) {
             // Touch events go directly to the native input queue.

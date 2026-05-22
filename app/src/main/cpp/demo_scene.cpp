@@ -22,7 +22,6 @@ namespace pal {
     constexpr Color purple    {0.65f, 0.35f, 1.00f, 1.f};
 }
 
-// Convenience: status setter that writes into whatever *ppStatus currently points to.
 static void setStatus(Label** ppStatus, const std::string& msg, Color c) {
     if (ppStatus && *ppStatus) {
         (*ppStatus)->text      = msg;
@@ -32,6 +31,7 @@ static void setStatus(Label** ppStatus, const std::string& msg, Color c) {
 
 void buildDemoScene(UISystem& sys,
                     std::function<void(float,float,float,float)> glCb,
+                    float dp,
                     Label*& outFps,
                     Label*& outAngle,
                     Label*& outStatus)
@@ -40,29 +40,31 @@ void buildDemoScene(UISystem& sys,
     root.bgColor = pal::bg;
 
     // Root: vertical  [header | body | footer]
-    auto rootLayout = std::make_unique<LinearLayout>(LinearLayout::Orientation::VERTICAL, 0.f);
-    root.layout = std::move(rootLayout);
+    {
+        auto l = std::make_unique<LinearLayout>(LinearLayout::Orientation::VERTICAL, 0.f);
+        root.layout = std::move(l);
+    }
 
     // ── HEADER ───────────────────────────────────────────────────────────────
     auto* header   = root.make<Container>();
     header->bgColor = pal::header;
-    header->padding = 10.f;
-    header->prefH   = 52.f;
+    header->padding = 10.f * dp;
+    header->prefH   = 52.f * dp;
     {
-        auto l = std::make_unique<LinearLayout>(LinearLayout::Orientation::HORIZONTAL, 8.f);
+        auto l = std::make_unique<LinearLayout>(LinearLayout::Orientation::HORIZONTAL, 8.f * dp);
         l->crossGravity = LinearLayout::Gravity::CENTER;
         header->layout = std::move(l);
     }
 
     auto* titleLbl = header->make<Label>("OpenGL Widget Demo");
     titleLbl->textColor = pal::textMain;
-    titleLbl->fontSize  = 18.f;
+    titleLbl->fontSize  = 18.f * dp;
     titleLbl->weight    = 1.f;
 
     auto* fpsLbl = header->make<Label>("-- FPS");
     fpsLbl->textColor = pal::accent;
-    fpsLbl->fontSize  = 16.f;
-    fpsLbl->prefW     = 90.f;
+    fpsLbl->fontSize  = 16.f * dp;
+    fpsLbl->prefW     = 90.f * dp;
     fpsLbl->align     = TextAlign::RIGHT;
     outFps = fpsLbl;
 
@@ -74,34 +76,34 @@ void buildDemoScene(UISystem& sys,
         body->layout = std::move(l);
     }
 
-    // LEFT PANEL
+    // ── LEFT PANEL ───────────────────────────────────────────────────────────
     auto* leftPanel = body->make<Container>();
     leftPanel->bgColor = pal::panel;
-    leftPanel->padding = 10.f;
-    leftPanel->prefW   = 150.f;
+    leftPanel->padding = 10.f * dp;
+    leftPanel->prefW   = 150.f * dp;
     {
-        auto l = std::make_unique<LinearLayout>(LinearLayout::Orientation::VERTICAL, 7.f);
+        auto l = std::make_unique<LinearLayout>(LinearLayout::Orientation::VERTICAL, 7.f * dp);
         l->crossGravity = LinearLayout::Gravity::FILL;
         leftPanel->layout = std::move(l);
     }
 
-    auto makeSection = [](Container* p, const std::string& t) {
+    auto makeSection = [dp](Container* p, const std::string& t) {
         auto* l = p->make<Label>(t);
         l->textColor = pal::accent;
-        l->fontSize  = 12.f;
-        l->prefH     = 16.f;
+        l->fontSize  = 12.f * dp;
+        l->prefH     = 16.f * dp;
     };
-    auto makeInfo = [](Container* p, const std::string& t) -> Label* {
+    auto makeInfo = [dp](Container* p, const std::string& t) -> Label* {
         auto* l = p->make<Label>(t);
         l->textColor = pal::textDim;
-        l->fontSize  = 13.f;
-        l->prefH     = 18.f;
+        l->fontSize  = 13.f * dp;
+        l->prefH     = 20.f * dp;
         return l;
     };
-    auto makeSep = [](Container* p) {
+    auto makeSep = [dp](Container* p) {
         auto* s = p->make<Container>();
         s->bgColor = pal::separator;
-        s->prefH   = 1.f;
+        s->prefH   = std::max(1.f, 1.f * dp);
     };
 
     makeSection(leftPanel, "INFO");
@@ -117,11 +119,10 @@ void buildDemoScene(UISystem& sys,
     makeSep(leftPanel);
     makeSection(leftPanel, "PALETTE");
 
-    // Color chips
     auto* chips = leftPanel->make<Container>();
-    chips->prefH = 18.f;
+    chips->prefH = 18.f * dp;
     {
-        auto l = std::make_unique<LinearLayout>(LinearLayout::Orientation::HORIZONTAL, 4.f);
+        auto l = std::make_unique<LinearLayout>(LinearLayout::Orientation::HORIZONTAL, 4.f * dp);
         l->crossGravity = LinearLayout::Gravity::FILL;
         chips->layout = std::move(l);
     }
@@ -131,32 +132,30 @@ void buildDemoScene(UISystem& sys,
         chip->weight  = 1.f;
     }
 
-    // Filler
     auto* lFill = leftPanel->make<Container>();
     lFill->weight = 1.f;
 
-    // GL WIDGET (center)
+    // ── GL WIDGET (center) ───────────────────────────────────────────────────
     auto* glw = body->make<GLWidget>();
     glw->weight       = 1.f;
     glw->onRender     = glCb;
     glw->borderColor  = Color{0.3f, 0.4f, 0.6f, 0.6f};
-    glw->borderWidth  = 2.f;
+    glw->borderWidth  = 2.f * dp;
 
-    // RIGHT PANEL
+    // ── RIGHT PANEL ──────────────────────────────────────────────────────────
     auto* rightPanel = body->make<Container>();
     rightPanel->bgColor = pal::panel;
-    rightPanel->padding = 10.f;
-    rightPanel->prefW   = 150.f;
+    rightPanel->padding = 10.f * dp;
+    rightPanel->prefW   = 150.f * dp;
     {
-        auto l = std::make_unique<LinearLayout>(LinearLayout::Orientation::VERTICAL, 8.f);
+        auto l = std::make_unique<LinearLayout>(LinearLayout::Orientation::VERTICAL, 8.f * dp);
         l->crossGravity = LinearLayout::Gravity::FILL;
         rightPanel->layout = std::move(l);
     }
 
-    // pps: stable pointer to outStatus (global g_statusLabel in renderer.cpp).
     Label** pps = &outStatus;
 
-    auto makeBtn = [&](Container* p, const std::string& lbl, Color bg,
+    auto makeBtn = [&, dp](Container* p, const std::string& lbl, Color bg,
                         std::function<void()> cb) -> Button* {
         auto* b = p->make<Button>(lbl);
         b->bgNormal    = bg;
@@ -164,15 +163,14 @@ void buildDemoScene(UISystem& sys,
         b->bgPressed   = bg.lerp(Colors::black, 0.20f);
         b->bgDisabled  = pal::separator;
         b->textColor   = Colors::white;
-        b->fontSize    = 14.f;
-        b->prefH       = 36.f;
-        b->cornerRadius = 6.f;
+        b->fontSize    = 14.f * dp;
+        b->prefH       = 38.f * dp;
+        b->cornerRadius = 6.f * dp;
         b->onClick     = std::move(cb);
         return b;
     };
 
     makeSection(rightPanel, "ACTIONS");
-
     makeBtn(rightPanel, "Reset View",   pal::accent,  [pps](){
         setStatus(pps, "View reset", Color{0.35f,0.72f,1.f,1.f});
     });
@@ -191,9 +189,9 @@ void buildDemoScene(UISystem& sys,
 
     auto* statusLbl = rightPanel->make<Label>("Ready");
     statusLbl->textColor = pal::textDim;
-    statusLbl->fontSize  = 13.f;
-    statusLbl->prefH     = 20.f;
-    outStatus = statusLbl; // write through reference → sets g_statusLabel
+    statusLbl->fontSize  = 13.f * dp;
+    statusLbl->prefH     = 20.f * dp;
+    outStatus = statusLbl;
 
     auto* rFill = rightPanel->make<Container>();
     rFill->weight = 1.f;
@@ -202,9 +200,9 @@ void buildDemoScene(UISystem& sys,
     makeSection(rightPanel, "SPEED");
 
     auto* speedRow = rightPanel->make<Container>();
-    speedRow->prefH = 36.f;
+    speedRow->prefH = 38.f * dp;
     {
-        auto l = std::make_unique<LinearLayout>(LinearLayout::Orientation::HORIZONTAL, 6.f);
+        auto l = std::make_unique<LinearLayout>(LinearLayout::Orientation::HORIZONTAL, 6.f * dp);
         l->crossGravity = LinearLayout::Gravity::FILL;
         speedRow->layout = std::move(l);
     }
@@ -229,20 +227,20 @@ void buildDemoScene(UISystem& sys,
     // ── FOOTER ───────────────────────────────────────────────────────────────
     auto* footer = root.make<Container>();
     footer->bgColor = pal::header;
-    footer->padding = 8.f;
-    footer->prefH   = 52.f;
+    footer->padding = 8.f * dp;
+    footer->prefH   = 52.f * dp;
     {
-        auto l = std::make_unique<LinearLayout>(LinearLayout::Orientation::HORIZONTAL, 8.f);
+        auto l = std::make_unique<LinearLayout>(LinearLayout::Orientation::HORIZONTAL, 8.f * dp);
         l->crossGravity = LinearLayout::Gravity::CENTER;
         footer->layout = std::move(l);
     }
 
     struct FBtn { const char* label; Color bg; const char* msg; Color msgCol; };
     FBtn fbtns[] = {
-        {"About",    pal::accent,    "About",    Color{0.35f,0.72f,1.f,1.f}},
-        {"Settings", pal::separator, "Settings", pal::textDim                },
-        {"Export",   pal::green,     "Exported!", pal::green                 },
-        {"Share",    pal::purple,    "Shared!",  pal::purple                 },
+        {"About",    pal::accent,    "About",     Color{0.35f,0.72f,1.f,1.f}},
+        {"Settings", pal::separator, "Settings",  pal::textDim               },
+        {"Export",   pal::green,     "Exported!", pal::green                  },
+        {"Share",    pal::purple,    "Shared!",   pal::purple                 },
     };
     for (auto& fb : fbtns) {
         std::string msg    = fb.msg;

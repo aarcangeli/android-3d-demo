@@ -129,7 +129,8 @@ void renderTriangle(float rx, float ry, float rw, float rh) {
 extern "C" {
 
 JNIEXPORT void JNICALL
-Java_com_example_openglndkdemo_GLRenderer_nativeInit(JNIEnv* env, jobject, jobject jAssetMgr) {
+Java_com_example_openglndkdemo_GLRenderer_nativeInit(JNIEnv* env, jobject,
+                                                     jobject jAssetMgr, jfloat density) {
     GLuint v = compileShader(GL_VERTEX_SHADER,   TRI_VERT);
     GLuint f = compileShader(GL_FRAGMENT_SHADER, TRI_FRAG);
     g_triProg = glCreateProgram();
@@ -143,9 +144,9 @@ Java_com_example_openglndkdemo_GLRenderer_nativeInit(JNIEnv* env, jobject, jobje
     g_uScale = glGetUniformLocation(g_triProg, "uScale");
 
     AAssetManager* am = AAssetManager_fromJava(env, jAssetMgr);
-    g_ui.init(am);
+    g_ui.init(am, density);
 
-    buildDemoScene(g_ui, renderTriangle,
+    buildDemoScene(g_ui, renderTriangle, density,
                    g_fpsLabel, g_angleLabel, g_statusLabel);
 
     glClearColor(0.08f, 0.09f, 0.12f, 1.f);

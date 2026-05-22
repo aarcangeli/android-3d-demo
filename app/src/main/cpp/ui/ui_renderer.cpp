@@ -60,14 +60,27 @@ static GLuint compileShader(GLenum type, const char* src) {
 
 // ── Init / Shutdown ──────────────────────────────────────────────────────────
 
-// Sizes to pre-bake (must cover all fontSize values used in demo_scene.cpp).
-static const int FONT_SIZES[] = {12, 13, 14, 16, 18, 24, 0};
+// Base dp sizes used by the demo UI.
+static const float BASE_DP_SIZES[] = {12.f, 13.f, 14.f, 16.f, 18.f};
 
-void UIRenderer::init(AAssetManager* mgr) {
+void UIRenderer::init(AAssetManager* mgr, float density) {
     buildShader();
     glGenBuffers(1, &vbo_);
     glGenBuffers(1, &ibo_);
-    fontAtlas_.init(mgr, "FreeSans.ttf", FONT_SIZES);
+
+    // Convert dp values to pixel sizes for the current display density.
+    // Deduplicate in case low density collapses several dp values to the same px.
+    int sizes[16];
+    int n = 0;
+    for (float dpSz : BASE_DP_SIZES) {
+        int px = std::max(8, (int)std::round(dpSz * density));
+        bool dup = false;
+        for (int i = 0; i < n; ++i) if (sizes[i] == px) { dup = true; break; }
+        if (!dup && n < 15) sizes[n++] = px;
+    }
+    sizes[n] = 0;
+
+    fontAtlas_.init(mgr, "FreeSans.ttf", sizes);
 }
 
 void UIRenderer::shutdown() {

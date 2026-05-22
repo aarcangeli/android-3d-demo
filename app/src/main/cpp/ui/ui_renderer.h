@@ -14,7 +14,8 @@ namespace ui {
 class UIRenderer {
 public:
     // mgr: Android asset manager used to load the font TTF.
-    void init(AAssetManager* mgr);
+    // density: display density scalar (dp → pixels), e.g. 3.0 on xxhdpi.
+    void init(AAssetManager* mgr, float density);
     void shutdown();
 
     // Call once per frame before any draw*().

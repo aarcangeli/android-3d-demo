@@ -7,13 +7,14 @@ import javax.microedition.khronos.opengles.GL10
 
 class GLRenderer(
     private val assetManager: AssetManager,
+    private val density: Float,
     private val onFpsUpdate: (Int) -> Unit,
 ) : GLSurfaceView.Renderer {
 
     private var frameCount  = 0
     private var lastFpsTime = 0L
 
-    override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) = nativeInit(assetManager)
+    override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) = nativeInit(assetManager, density)
     override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) = nativeResize(width, height)
 
     override fun onDrawFrame(gl: GL10?) {
@@ -40,7 +41,7 @@ class GLRenderer(
     fun touchCancel(id: Int, x: Float, y: Float) = nativeTouchCancel(id, x, y)
     fun key        (code: Int, unicode: Int, down: Boolean) = nativeKey(code, unicode, down)
 
-    private external fun nativeInit    (assetMgr: AssetManager)
+    private external fun nativeInit    (assetMgr: AssetManager, density: Float)
     private external fun nativeResize  (width: Int, height: Int)
     private external fun nativeDraw    ()
     private external fun nativeSetFps  (fps: String)

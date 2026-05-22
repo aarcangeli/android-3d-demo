@@ -12,7 +12,7 @@ public:
     UISystem();
     ~UISystem();
 
-    void init(AAssetManager* mgr);
+    void init(AAssetManager* mgr, float density);
     void shutdown();
 
     // Called on GL thread.

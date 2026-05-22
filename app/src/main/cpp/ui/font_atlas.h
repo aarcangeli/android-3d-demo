@@ -19,8 +19,8 @@ struct GlyphMetrics {
 
 class FontAtlas {
 public:
-    static constexpr int ATLAS_W = 512;
-    static constexpr int ATLAS_H = 512;
+    static constexpr int ATLAS_W = 1024;
+    static constexpr int ATLAS_H = 1024;
 
     ~FontAtlas();
 

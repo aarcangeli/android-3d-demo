@@ -10,8 +10,8 @@ namespace ui {
 UISystem::UISystem() = default;
 UISystem::~UISystem() { shutdown(); }
 
-void UISystem::init(AAssetManager* mgr) {
-    renderer_.init(mgr);
+void UISystem::init(AAssetManager* mgr, float density) {
+    renderer_.init(mgr, density);
 }
 
 void UISystem::shutdown() {
