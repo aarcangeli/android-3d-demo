@@ -76,11 +76,17 @@ void buildDemoScene(UISystem& sys,
         body->layout = std::move(l);
     }
 
-    // ── LEFT PANEL ───────────────────────────────────────────────────────────
-    auto* leftPanel = body->make<Container>();
+    // ── LEFT PANEL (scrollable) ───────────────────────────────────────────────
+    auto* scroll = body->make<ScrollContainer>();
+    scroll->prefW      = 150.f * dp;
+    scroll->scrollbarW   = 5.f  * dp;
+    scroll->scrollbarPad = 2.f  * dp;
+    scroll->trackColor   = pal::panelDark;
+    scroll->thumbColor   = Color{0.35f, 0.42f, 0.62f, 0.9f};
+
+    Container* leftPanel = &scroll->content();
     leftPanel->bgColor = pal::panel;
     leftPanel->padding = 10.f * dp;
-    leftPanel->prefW   = 150.f * dp;
     {
         auto l = std::make_unique<LinearLayout>(LinearLayout::Orientation::VERTICAL, 7.f * dp);
         l->crossGravity = LinearLayout::Gravity::FILL;
@@ -111,11 +117,21 @@ void buildDemoScene(UISystem& sys,
     makeInfo(leftPanel, "Vertices: 3");
     makeInfo(leftPanel, "Draw calls: 1");
     makeInfo(leftPanel, "API: GL ES 2.0");
+    makeInfo(leftPanel, "Renderer: NDK");
+    makeInfo(leftPanel, "VSync: on");
     makeSep(leftPanel);
     makeSection(leftPanel, "BUILD");
     makeInfo(leftPanel, "Min SDK: 21");
-    makeInfo(leftPanel, "ABI: arm64");
+    makeInfo(leftPanel, "Target SDK: 35");
+    makeInfo(leftPanel, "ABI: arm64-v8a");
     makeInfo(leftPanel, "C++ 17");
+    makeInfo(leftPanel, "NDK r26");
+    makeSep(leftPanel);
+    makeSection(leftPanel, "RENDERER");
+    makeInfo(leftPanel, "FreeType 2.13");
+    makeInfo(leftPanel, "Font: FreeSans");
+    makeInfo(leftPanel, "Atlas: 1024^2");
+    makeInfo(leftPanel, "Glyphs: ASCII");
     makeSep(leftPanel);
     makeSection(leftPanel, "PALETTE");
 
@@ -132,8 +148,16 @@ void buildDemoScene(UISystem& sys,
         chip->weight  = 1.f;
     }
 
-    auto* lFill = leftPanel->make<Container>();
-    lFill->weight = 1.f;
+    makeSep(leftPanel);
+    makeSection(leftPanel, "TOUCH");
+    makeInfo(leftPanel, "Multi-pointer");
+    makeInfo(leftPanel, "Scroll: drag");
+    makeInfo(leftPanel, "Buttons: tap");
+    makeSep(leftPanel);
+    makeSection(leftPanel, "ABOUT");
+    makeInfo(leftPanel, "android-3d-demo");
+    makeInfo(leftPanel, "MIT License");
+    makeInfo(leftPanel, "github.com/");
 
     // ── GL WIDGET (center) ───────────────────────────────────────────────────
     auto* glw = body->make<GLWidget>();

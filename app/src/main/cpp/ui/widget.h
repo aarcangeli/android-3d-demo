@@ -169,6 +169,46 @@ public:
     void draw(UIRenderer& r) override;
 };
 
+// ─── ScrollContainer ─────────────────────────────────────────────────────────
+// A clipped, vertically-scrollable container with a visual scrollbar.
+
+class ScrollContainer : public Widget {
+public:
+    Color trackColor   = Color{0.12f, 0.14f, 0.20f, 1.f};
+    Color thumbColor   = Color{0.40f, 0.45f, 0.62f, 0.85f};
+    float scrollbarW   = 6.f;
+    float scrollbarPad = 2.f;
+
+    Container& content() { return content_; }
+
+    template<typename T, typename... Args>
+    T* make(Args&&... args) { return content_.make<T>(std::forward<Args>(args)...); }
+
+    void draw(UIRenderer& r) override;
+    bool onInput(const InputEvent& e) override;
+    void doLayout() override;
+
+private:
+    Container content_;
+    float scrollY_     = 0.f;
+    float contentH_    = 0.f;
+
+    enum class DragState { NONE, TENTATIVE, SCROLLING };
+    DragState drag_        = DragState::NONE;
+    int       dragId_      = -1;
+    float     dragStartY_  = 0.f;
+    float     dragScrollY_ = 0.f;
+
+    bool  showBar()  const { return contentH_ > h + 0.5f; }
+    float barX()     const { return x + w - scrollbarW - scrollbarPad; }
+    float trackTop() const { return y + scrollbarPad; }
+    float trackH()   const { return h - scrollbarPad * 2.f; }
+    float thumbH()   const;
+    float thumbTop() const;
+    float contentW() const { return showBar() ? w - scrollbarW - scrollbarPad * 2.f : w; }
+    void  clampScroll();
+};
+
 // ─── LinearLayout ────────────────────────────────────────────────────────────
 
 class LinearLayout : public Layout {

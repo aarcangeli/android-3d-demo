@@ -1,6 +1,7 @@
 #include "widget.h"
 #include "ui_renderer.h"
 #include <algorithm>
+#include <cmath>
 
 namespace ui {
 
@@ -100,6 +101,109 @@ void GLWidget::draw(UIRenderer& r) {
     // Border is drawn as a new batch on top of the GL content.
     if (borderWidth > 0 && borderColor.a > 0.001f)
         r.drawRectBorder(x, y, w, h, borderWidth, borderColor);
+}
+
+// ── ScrollContainer ───────────────────────────────────────────────────────────
+
+void ScrollContainer::clampScroll() {
+    float maxScroll = std::max(0.f, contentH_ - h);
+    scrollY_ = std::max(0.f, std::min(scrollY_, maxScroll));
+}
+
+void ScrollContainer::doLayout() {
+    auto measure = [&](float cw) -> float {
+        content_.x = 0; content_.y = 0;
+        content_.w = cw; content_.h = 1e6f;
+        content_.doLayout();
+        float maxY = 0.f;
+        for (auto& k : content_.children())
+            if (k->visible) maxY = std::max(maxY, k->y + k->h);
+        return maxY;
+    };
+
+    // Pass 1: measure without scrollbar.
+    bool barBefore = showBar();
+    contentH_ = measure(w);
+    // If bar visibility changed, re-measure with narrower width.
+    if (showBar() != barBefore)
+        contentH_ = measure(contentW());
+
+    clampScroll();
+    // Final pass: position children with scroll offset and correct x/y.
+    float cw = contentW();
+    content_.x = x; content_.y = y - scrollY_;
+    content_.w = cw; content_.h = std::max(h, contentH_);
+    content_.doLayout();
+}
+
+void ScrollContainer::draw(UIRenderer& r) {
+    if (!visible) return;
+    r.pushScissor(x, y, w, h);
+    content_.draw(r);
+    r.popScissor();
+    if (showBar()) {
+        float tx  = barX();
+        float ty  = trackTop();
+        float th  = trackH();
+        float rad = scrollbarW * 0.5f;
+        r.drawRoundRect(tx, ty, scrollbarW, th,    rad, trackColor);
+        r.drawRoundRect(tx, thumbTop(), scrollbarW, thumbH(), rad, thumbColor);
+    }
+}
+
+float ScrollContainer::thumbH() const {
+    float ratio = std::min(1.f, h / contentH_);
+    return std::max(scrollbarW * 2.f, trackH() * ratio);
+}
+
+float ScrollContainer::thumbTop() const {
+    float maxY      = trackH() - thumbH();
+    float maxScroll = contentH_ - h;
+    float t = (maxScroll > 0.f) ? scrollY_ / maxScroll : 0.f;
+    return trackTop() + maxY * t;
+}
+
+bool ScrollContainer::onInput(const InputEvent& e) {
+    if (!visible || !enabled) return false;
+    if (!e.isTouchEvent()) return false;
+
+    bool inside = contains(e.x, e.y);
+
+    if (e.type == InputType::TOUCH_DOWN) {
+        if (!inside) return false;
+        dragId_      = e.pointerId;
+        dragStartY_  = e.y;
+        dragScrollY_ = scrollY_;
+        drag_        = DragState::TENTATIVE;
+        content_.onInput(e);
+        return true;
+    }
+    if (e.type == InputType::TOUCH_MOVE && dragId_ == e.pointerId) {
+        float dy = e.y - dragStartY_;
+        if (drag_ == DragState::TENTATIVE && std::abs(dy) > 8.f) {
+            drag_ = DragState::SCROLLING;
+            InputEvent cancel = e;
+            cancel.type = InputType::TOUCH_CANCEL;
+            content_.onInput(cancel);
+        }
+        if (drag_ == DragState::SCROLLING) {
+            scrollY_ = dragScrollY_ - dy;
+            clampScroll();
+            doLayout();
+        } else {
+            content_.onInput(e);
+        }
+        return true;
+    }
+    if ((e.type == InputType::TOUCH_UP || e.type == InputType::TOUCH_CANCEL)
+        && dragId_ == e.pointerId) {
+        bool wasScrolling = (drag_ == DragState::SCROLLING);
+        drag_   = DragState::NONE;
+        dragId_ = -1;
+        if (!wasScrolling) content_.onInput(e);
+        return true;
+    }
+    return false;
 }
 
 // ── LinearLayout ─────────────────────────────────────────────────────────────
