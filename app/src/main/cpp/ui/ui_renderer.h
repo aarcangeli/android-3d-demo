@@ -39,6 +39,10 @@ public:
     void pushScissor(float x, float y, float w, float h);
     void popScissor();
 
+    // Submit all pending draw batches to the GPU immediately.
+    // Must be called before any raw GL draw calls (e.g. inside GLWidget::onRender).
+    void flush();
+
     float screenW() const { return sw_; }
     float screenH() const { return sh_; }
 
@@ -56,7 +60,6 @@ private:
     };
 
     Batch&   currentBatch(DrawMode mode);
-    void     flush();
     void     submitBatch(Batch& b);
 
     void pushQuad(Batch& b,

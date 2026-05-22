@@ -101,6 +101,8 @@ public:
 
     const std::vector<std::unique_ptr<Widget>>& children() const { return children_; }
 
+    void clearChildren() { children_.clear(); }
+
     void draw(UIRenderer& r) override;
     bool onInput(const InputEvent& e) override;
     void doLayout() override;

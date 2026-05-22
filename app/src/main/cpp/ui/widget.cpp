@@ -92,11 +92,14 @@ bool Button::onInput(const InputEvent& e) {
 
 void GLWidget::draw(UIRenderer& r) {
     if (!visible) return;
-    // Draw border frame around the GL viewport area.
+    // Flush all queued UI batches so content drawn before us reaches the GPU
+    // before we make direct GL calls. Without this the full-screen background
+    // quad would be submitted after the triangle and paint over it.
+    r.flush();
+    if (onRender) onRender(x, y, w, h);
+    // Border is drawn as a new batch on top of the GL content.
     if (borderWidth > 0 && borderColor.a > 0.001f)
         r.drawRectBorder(x, y, w, h, borderWidth, borderColor);
-    // The actual GL content is rendered by UISystem after flushing batches.
-    if (onRender) onRender(x, y, w, h);
 }
 
 // ── LinearLayout ─────────────────────────────────────────────────────────────

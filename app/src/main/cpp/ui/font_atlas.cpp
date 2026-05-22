@@ -19,6 +19,18 @@ FontAtlas::~FontAtlas() {
 }
 
 bool FontAtlas::init(AAssetManager* mgr, const char* assetPath, const int* sizes) {
+    // ── Clean up any previous FreeType state (called again on GL context loss) ─
+    if (ftFace_)    { FT_Done_Face    ((FT_Face)ftFace_);     ftFace_    = nullptr; }
+    if (ftLibrary_) { FT_Done_FreeType((FT_Library)ftLibrary_); ftLibrary_ = nullptr; }
+    // GL texture ID is invalid after context loss — just forget it.
+    tex_ = 0;
+    glyphs_.clear();
+    lineMetrics_.clear();
+    bakedSizes_.clear();
+    fontData_.clear();
+    pixels_.clear();
+    penX_ = 1; penY_ = 1; shelfH_ = 0;
+
     // ── Load TTF from APK assets ─────────────────────────────────────────────
     AAsset* asset = AAssetManager_open(mgr, assetPath, AASSET_MODE_BUFFER);
     if (!asset) {

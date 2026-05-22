@@ -146,6 +146,11 @@ Java_com_example_openglndkdemo_GLRenderer_nativeInit(JNIEnv* env, jobject,
     AAssetManager* am = AAssetManager_fromJava(env, jAssetMgr);
     g_ui.init(am, density);
 
+    // Clear the widget tree so that repeated surface-created callbacks
+    // (EGL context lost → recreated on pause/resume) don't duplicate widgets.
+    g_ui.root().clearChildren();
+    g_fpsLabel = g_angleLabel = g_statusLabel = nullptr;
+
     buildDemoScene(g_ui, renderTriangle, density,
                    g_fpsLabel, g_angleLabel, g_statusLabel);
 
