@@ -8,6 +8,7 @@
 #include <vector>
 #include <cstring>
 #include <algorithm>
+#include <time.h>
 
 #define LOG_TAG "SceneRenderer"
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
@@ -227,6 +228,11 @@ void SceneRenderer::init(float sw, float sh) {
     buildGridGeometry();
     buildAxisGeometry();
     defaultCamera_ = camera;
+    // Reset interaction state
+    nPtrs_ = 0; ptrs_[0].id = ptrs_[1].id = -1;
+    blockOrbit_ = false;
+    cubeSelected_ = showHitMarker_ = false;
+    tapMoved_ = false; tapStartMs_ = lastTapMs_ = 0;
 }
 
 void SceneRenderer::shutdown() {
@@ -250,9 +256,113 @@ void SceneRenderer::resetView() {
     autoRotation = 0.f;
 }
 
+// ── Ray casting / tap helpers ─────────────────────────────────────────────────
+
+int64_t SceneRenderer::nowMs() {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (int64_t)ts.tv_sec * 1000LL + ts.tv_nsec / 1000000LL;
+}
+
+void SceneRenderer::getRayFromTouch(float tx, float ty,
+                                    float orig[3], float dir[3]) const {
+    float vm[16];
+    camera.viewMatrix(vm);
+    // Camera basis in world space (from view matrix columns)
+    float rx=vm[0], ry_=vm[1], rz=vm[2];   // right
+    float ux=vm[4], uy=vm[5], uz=vm[6];    // up
+    float fx=-vm[8],fy=-vm[9],fz=-vm[10];  // forward
+
+    float ndcX = (tx - vpX_) / vpW_ * 2.f - 1.f;
+    float ndcY = 1.f - (ty - vpY_) / vpH_ * 2.f;  // Y flipped
+
+    float tanH   = tanf(camera.fovY * (3.14159265f / 360.f));
+    float aspect = vpW_ / (vpH_ > 0 ? vpH_ : 1.f);
+
+    float ddx = ndcX * tanH * aspect;
+    float ddy = ndcY * tanH;
+
+    float ex, ey, ez;
+    camera.eyePos(ex, ey, ez);
+    orig[0] = ex; orig[1] = ey; orig[2] = ez;
+
+    // dir = right*ddx + up*ddy + forward (then normalize)
+    float wx = rx*ddx + ux*ddy + fx;
+    float wy = ry_*ddx + uy*ddy + fy;
+    float wz = rz*ddx + uz*ddy + fz;
+    float wl = sqrtf(wx*wx + wy*wy + wz*wz);
+    if (wl < 1e-7f) wl = 1e-7f;
+    dir[0] = wx/wl; dir[1] = wy/wl; dir[2] = wz/wl;
+}
+
+bool SceneRenderer::rayCastCube(const float orig[3], const float dir[3],
+                                 float autoRotRad, float& hitT) {
+    // Transform ray to cube's object space (inverse Y rotation)
+    float c = cosf(-autoRotRad), s = sinf(-autoRotRad);
+    float ox = c*orig[0] + s*orig[2];
+    float oy = orig[1];
+    float oz = -s*orig[0] + c*orig[2];
+    float dx = c*dir[0]  + s*dir[2];
+    float dy = dir[1];
+    float dz = -s*dir[0] + c*dir[2];
+
+    // AABB slab test: cube is [-0.8, 0.8]^3 in object space
+    float tmin = -1e30f, tmax = 1e30f;
+    float os[3] = {ox,oy,oz}, ds[3] = {dx,dy,dz};
+    for (int a = 0; a < 3; ++a) {
+        if (fabsf(ds[a]) < 1e-7f) {
+            if (os[a] < -0.8f || os[a] > 0.8f) return false;
+        } else {
+            float t1 = (-0.8f - os[a]) / ds[a];
+            float t2 = ( 0.8f - os[a]) / ds[a];
+            if (t1 > t2) { float tmp=t1; t1=t2; t2=tmp; }
+            tmin = std::max(tmin, t1);
+            tmax = std::min(tmax, t2);
+            if (tmin > tmax) return false;
+        }
+    }
+    if (tmax < 0.f) return false;
+    hitT = tmin > 0.f ? tmin : tmax;
+    return true;
+}
+
+void SceneRenderer::handleTap(float tx, float ty, bool isDouble) {
+    if (vpW_ <= 0 || vpH_ <= 0) return;
+    float orig[3], dir[3];
+    getRayFromTouch(tx, ty, orig, dir);
+
+    float autoRotRad = autoRotation * (3.14159265f / 180.f);
+    float hitT;
+    bool hit = rayCastCube(orig, dir, autoRotRad, hitT);
+
+    if (isDouble) {
+        if (hit) {
+            // Set orbit pivot to the world-space hit point
+            camera.targetX = orig[0] + dir[0] * hitT;
+            camera.targetY = orig[1] + dir[1] * hitT;
+            camera.targetZ = orig[2] + dir[2] * hitT;
+        }
+    } else {
+        // Single tap: select/deselect
+        if (hit) {
+            cubeSelected_ = true;
+            showHitMarker_ = true;
+            hitMarkerPos_[0] = orig[0] + dir[0] * hitT;
+            hitMarkerPos_[1] = orig[1] + dir[1] * hitT;
+            hitMarkerPos_[2] = orig[2] + dir[2] * hitT;
+        } else {
+            cubeSelected_  = false;
+            showHitMarker_ = false;
+        }
+    }
+}
+
 // ── render ────────────────────────────────────────────────────────────────────
 
 void SceneRenderer::render(float rx, float ry, float rw, float rh, ui::UIRenderer& uiR) {
+    // Save viewport for ray casting in onInput
+    vpX_ = rx; vpY_ = ry; vpW_ = rw; vpH_ = rh;
+
     // -- Set up viewport clipped to the GLWidget rect --
     GLint sy = (GLint)(screenH_ - ry - rh);
     glEnable(GL_SCISSOR_TEST);
@@ -283,6 +393,7 @@ void SceneRenderer::render(float rx, float ry, float rw, float rh, ui::UIRendere
     // MVP = proj * view * model
     mat4Mul(view, model, vm);
     mat4Mul(proj, vm, mvp);
+    float cubeMVP[16]; memcpy(cubeMVP, mvp, sizeof(mvp));  // save for wireframe
 
     // -- Draw cube --
     glUseProgram(cubeProg_);
@@ -329,6 +440,39 @@ void SceneRenderer::render(float rx, float ry, float rw, float rh, ui::UIRendere
     glDisableVertexAttribArray(gridAPos_);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
+    // -- Wireframe selection outline (model space, uses cube MVP) --
+    if (cubeSelected_) {
+        const float s = 0.8f;
+        const float wv[] = {
+            -s,-s,-s, s,-s,-s,   s,-s,-s, s,-s, s,   s,-s, s,-s,-s, s,  -s,-s, s,-s,-s,-s,
+            -s, s,-s, s, s,-s,   s, s,-s, s, s, s,   s, s, s,-s, s, s,  -s, s, s,-s, s,-s,
+            -s,-s,-s,-s, s,-s,   s,-s,-s, s, s,-s,   s,-s, s, s, s, s,  -s,-s, s,-s, s, s,
+        };
+        glUniformMatrix4fv(gridUMVP_, 1, GL_FALSE, cubeMVP);
+        glUniform4f(gridUColor_, 0.05f, 0.85f, 1.0f, 1.f);
+        glEnableVertexAttribArray(gridAPos_);
+        glVertexAttribPointer(gridAPos_, 3, GL_FLOAT, GL_FALSE, 0, wv);
+        glDrawArrays(GL_LINES, 0, 24);
+        glDisableVertexAttribArray(gridAPos_);
+    }
+
+    // -- Hit marker (world space; mvp = proj*view at this point) --
+    if (showHitMarker_) {
+        glUniformMatrix4fv(gridUMVP_, 1, GL_FALSE, mvp);
+        float mx = hitMarkerPos_[0], my = hitMarkerPos_[1], mz = hitMarkerPos_[2];
+        const float sz = 0.07f;
+        const float mv[] = {
+            mx-sz, my,    mz,     mx+sz, my,    mz,
+            mx,    my-sz, mz,     mx,    my+sz, mz,
+            mx,    my,    mz-sz,  mx,    my,    mz+sz,
+        };
+        glUniform4f(gridUColor_, 1.f, 1.f, 0.1f, 1.f);
+        glEnableVertexAttribArray(gridAPos_);
+        glVertexAttribPointer(gridAPos_, 3, GL_FLOAT, GL_FALSE, 0, mv);
+        glDrawArrays(GL_LINES, 0, 6);
+        glDisableVertexAttribArray(gridAPos_);
+    }
+
     // -- Restore state for UI --
     glDisable(GL_CULL_FACE);
     glDisable(GL_DEPTH_TEST);
@@ -350,42 +494,47 @@ bool SceneRenderer::onInput(const ui::InputEvent& e) {
     using ui::InputType;
 
     if (e.type == InputType::TOUCH_DOWN) {
-        // Find empty slot
         int slot = (ptrs_[0].id == -1) ? 0 : (ptrs_[1].id == -1 ? 1 : -1);
         if (slot < 0) return false;
         ptrs_[slot] = {e.pointerId, e.x, e.y};
         nPtrs_++;
 
-        if (nPtrs_ == 1) {
-            // Begin orbit
-            orbitAz0_    = camera.azimuth;
-            orbitEl0_    = camera.elevation;
-            orbitStartX_ = e.x;
-            orbitStartY_ = e.y;
+        if (nPtrs_ == 1 && !blockOrbit_) {
+            prevOrbitX_ = e.x;
+            prevOrbitY_ = e.y;
+            // Start tap tracking
+            tapStartX_  = e.x;
+            tapStartY_  = e.y;
+            tapStartMs_ = nowMs();
+            tapMoved_   = false;
         } else if (nPtrs_ == 2) {
-            // Begin pan/zoom — mode undecided until gesture threshold
+            blockOrbit_ = true;
+            tapMoved_   = true;  // invalidate any pending single-tap
             float dx  = ptrs_[1].x - ptrs_[0].x;
             float dy  = ptrs_[1].y - ptrs_[0].y;
-            prevDist_ = sqrtf(dx*dx + dy*dy);
-            prevMidX_ = (ptrs_[0].x + ptrs_[1].x) * 0.5f;
-            prevMidY_ = (ptrs_[0].y + ptrs_[1].y) * 0.5f;
+            prevDist_  = sqrtf(dx*dx + dy*dy);
+            prevMidX_  = (ptrs_[0].x + ptrs_[1].x) * 0.5f;
+            prevMidY_  = (ptrs_[0].y + ptrs_[1].y) * 0.5f;
             twoFingerMode_ = TwoFingerMode::UNDECIDED;
         }
         return true;
     }
 
     if (e.type == InputType::TOUCH_MOVE) {
-        // Update pointer
         for (int i = 0; i < 2; ++i)
             if (ptrs_[i].id == e.pointerId) { ptrs_[i].x = e.x; ptrs_[i].y = e.y; }
 
-        if (nPtrs_ == 1) {
-            // Orbit: azimuth/elevation from delta vs start
-            float dx = e.x - orbitStartX_;
-            float dy = e.y - orbitStartY_;
-            camera.azimuth   = orbitAz0_  + dx * 0.25f;
-            camera.elevation = orbitEl0_  - dy * 0.25f;
+        if (nPtrs_ == 1 && !blockOrbit_) {
+            float ddx = e.x - prevOrbitX_;
+            float ddy = e.y - prevOrbitY_;
+            camera.azimuth   += ddx * 0.25f;
+            camera.elevation -= ddy * 0.25f;
             camera.clamp();
+            prevOrbitX_ = e.x;
+            prevOrbitY_ = e.y;
+            // Track tap movement
+            float md = sqrtf((e.x-tapStartX_)*(e.x-tapStartX_) + (e.y-tapStartY_)*(e.y-tapStartY_));
+            if (md > 10.f) tapMoved_ = true;
         } else if (nPtrs_ == 2) {
             float dx   = ptrs_[1].x - ptrs_[0].x;
             float dy   = ptrs_[1].y - ptrs_[0].y;
@@ -395,21 +544,24 @@ bool SceneRenderer::onInput(const ui::InputEvent& e) {
             float ddx  = midX - prevMidX_;
             float ddy  = midY - prevMidY_;
 
-            // Determine gesture type on first significant motion
             if (twoFingerMode_ == TwoFingerMode::UNDECIDED) {
-                float pinchDelta = std::abs(dist - prevDist_);
-                float panDelta   = sqrtf(ddx*ddx + ddy*ddy);
-                const float kThresh = 10.f;
-                if      (pinchDelta > kThresh) twoFingerMode_ = TwoFingerMode::ZOOM;
-                else if (panDelta   > kThresh) twoFingerMode_ = TwoFingerMode::PAN;
+                float pinch = std::abs(dist - prevDist_);
+                float pan   = sqrtf(ddx*ddx + ddy*ddy);
+                if      (pinch > 10.f) twoFingerMode_ = TwoFingerMode::ZOOM;
+                else if (pan   > 10.f) twoFingerMode_ = TwoFingerMode::PAN;
             }
 
             if (twoFingerMode_ == TwoFingerMode::ZOOM) {
-                if (dist > 1e-3f && prevDist_ > 1e-3f)
-                    camera.distance *= prevDist_ / dist;
+                if (dist > 1e-3f && prevDist_ > 1e-3f) {
+                    float ratio = prevDist_ / dist;
+                    // Dampen zoom to feel similar to pan
+                    camera.distance *= 1.f + (ratio - 1.f) * 0.6f;
+                }
                 camera.clamp();
             } else if (twoFingerMode_ == TwoFingerMode::PAN) {
-                float panScale = camera.distance * 0.0015f;
+                // panScale: world units per pixel, calibrated to pivot distance
+                float tanH     = tanf(camera.fovY * (3.14159265f / 360.f));
+                float panScale = 2.f * camera.distance * tanH / (vpH_ > 0 ? vpH_ : 1.f);
                 float r[3], u[3];
                 camera.rightAndUp(r, u);
                 camera.targetX += (-r[0]*ddx + u[0]*ddy) * panScale;
@@ -426,21 +578,34 @@ bool SceneRenderer::onInput(const ui::InputEvent& e) {
 
     if (e.type == InputType::TOUCH_UP || e.type == InputType::TOUCH_CANCEL) {
         for (int i = 0; i < 2; ++i) {
-            if (ptrs_[i].id == e.pointerId) {
-                ptrs_[i].id = -1;
-                nPtrs_--;
-                if (nPtrs_ < 0) nPtrs_ = 0;
-                // If one pointer remains, restart orbit from current state
-                for (int j = 0; j < 2; ++j) {
-                    if (ptrs_[j].id != -1) {
-                        orbitAz0_    = camera.azimuth;
-                        orbitEl0_    = camera.elevation;
-                        orbitStartX_ = ptrs_[j].x;
-                        orbitStartY_ = ptrs_[j].y;
+            if (ptrs_[i].id != e.pointerId) continue;
+            ptrs_[i].id = -1;
+            nPtrs_--;
+            if (nPtrs_ < 0) nPtrs_ = 0;
+
+            if (nPtrs_ == 0) {
+                // All fingers lifted
+                blockOrbit_ = false;
+
+                // Tap / double-tap detection (single-finger only, no drag)
+                if (e.type == InputType::TOUCH_UP && !tapMoved_
+                    && (nowMs() - tapStartMs_) < 300LL) {
+                    int64_t now = nowMs();
+                    float dx = e.x - lastTapX_, dy = e.y - lastTapY_;
+                    bool isDouble = (lastTapMs_ > 0)
+                        && (now - lastTapMs_) < 300LL
+                        && sqrtf(dx*dx + dy*dy) < 40.f;
+                    handleTap(e.x, e.y, isDouble);
+                    if (isDouble) {
+                        lastTapMs_ = 0;  // reset to prevent triple-tap chain
+                    } else {
+                        lastTapMs_ = now;
+                        lastTapX_ = e.x;
+                        lastTapY_ = e.y;
                     }
                 }
-                break;
             }
+            break;
         }
         return true;
     }
