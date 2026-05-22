@@ -696,7 +696,7 @@ bool SceneRenderer::onInput(const ui::InputEvent& e) {
             float ddx=e.x-prevOrbitX_, ddy=e.y-prevOrbitY_;
             if (dtZoom_) {
                 // Double-tap + drag vertical → zoom
-                camera.distance *= 1.f + ddy * 0.004f;
+                camera.distance *= 1.f + ddy * -0.002f;
                 camera.clamp();
             } else {
                 camera.azimuth  -= ddx * 0.25f;
