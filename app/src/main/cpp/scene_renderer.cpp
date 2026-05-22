@@ -268,10 +268,10 @@ void SceneRenderer::getRayFromTouch(float tx, float ty,
                                     float orig[3], float dir[3]) const {
     float vm[16];
     camera.viewMatrix(vm);
-    // Camera basis in world space (from view matrix columns)
-    float rx=vm[0], ry_=vm[1], rz=vm[2];   // right
-    float ux=vm[4], uy=vm[5], uz=vm[6];    // up
-    float fx=-vm[8],fy=-vm[9],fz=-vm[10];  // forward
+    // Camera basis in world space (rows of the view matrix)
+    float rx=vm[0], ry_=vm[4], rz=vm[8];   // right
+    float ux=vm[1], uy=vm[5], uz=vm[9];    // up
+    float fx=-vm[2],fy=-vm[6],fz=-vm[10];  // forward
 
     float ndcX = (tx - vpX_) / vpW_ * 2.f - 1.f;
     float ndcY = 1.f - (ty - vpY_) / vpH_ * 2.f;  // Y flipped
