@@ -210,7 +210,7 @@ void SceneRenderer::buildCylinderMesh() {
         pushV(v, R*cosf(a),+H,R*sinf(a), 0,1,0, 0.25f,0.90f,0.75f);
     }
     for (int i = 0; i < segs; ++i)
-        idx.insert(idx.end(), {topCenter,(uint16_t)(topRingStart+i),(uint16_t)(topRingStart+i+1)});
+        idx.insert(idx.end(), {topCenter,(uint16_t)(topRingStart+i+1),(uint16_t)(topRingStart+i)});
 
     // Bottom cap
     uint16_t botCenter = (uint16_t)(v.size()/10);
@@ -221,7 +221,7 @@ void SceneRenderer::buildCylinderMesh() {
         pushV(v, R*cosf(a),-H,R*sinf(a), 0,-1,0, 0.25f,0.60f,0.30f);
     }
     for (int i = 0; i < segs; ++i)
-        idx.insert(idx.end(), {botCenter,(uint16_t)(botRingStart+i+1),(uint16_t)(botRingStart+i)});
+        idx.insert(idx.end(), {botCenter,(uint16_t)(botRingStart+i),(uint16_t)(botRingStart+i+1)});
 
     cylinderMesh_ = buildMeshFromVerts(v, idx);
 }
