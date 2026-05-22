@@ -93,14 +93,17 @@ bool Button::onInput(const InputEvent& e) {
 
 void GLWidget::draw(UIRenderer& r) {
     if (!visible) return;
-    // Flush all queued UI batches so content drawn before us reaches the GPU
-    // before we make direct GL calls. Without this the full-screen background
-    // quad would be submitted after the triangle and paint over it.
     r.flush();
-    if (onRender) onRender(x, y, w, h);
-    // Border is drawn as a new batch on top of the GL content.
+    if (onRender) onRender(x, y, w, h, r);
     if (borderWidth > 0 && borderColor.a > 0.001f)
         r.drawRectBorder(x, y, w, h, borderWidth, borderColor);
+}
+
+bool GLWidget::onInput(const InputEvent& e) {
+    if (!visible || !enabled) return false;
+    if (e.type == InputType::TOUCH_DOWN && !contains(e.x, e.y)) return false;
+    if (inputHandler) return inputHandler(e);
+    return false;
 }
 
 // ── ScrollContainer ───────────────────────────────────────────────────────────
