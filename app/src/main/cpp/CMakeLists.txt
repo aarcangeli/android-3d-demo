@@ -22,6 +22,7 @@ FetchContent_MakeAvailable(freetype)
 add_library(openglndkdemo SHARED
     renderer.cpp
     demo_scene.cpp
+    scene_renderer.cpp
     ui/font_atlas.cpp
     ui/ui_renderer.cpp
     ui/widget.cpp

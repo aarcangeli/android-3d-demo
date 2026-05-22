@@ -30,17 +30,22 @@ static void setStatus(Label** ppStatus, const std::string& msg, Color c) {
 }
 
 void buildDemoScene(UISystem& sys,
-                    std::function<void(float,float,float,float)> glCb,
                     float dp,
+                    float screenW,
                     int apiLevel,
+                    scene::SceneRenderer& scene,
+                    GLWidget*& outGLWidget,
                     Label*& outFps,
                     Label*& outAngle,
                     Label*& outStatus)
 {
+    // compact = portrait phone: width in dp < 480
+    bool compact = (screenW > 0.f && dp > 0.f) ? (screenW / dp < 480.f) : false;
+
     Container& root = sys.root();
     root.bgColor = pal::bg;
 
-    // Root: vertical  [header | body | footer]
+    // Root: vertical  [header | body | (footer if wide)]
     {
         auto l = std::make_unique<LinearLayout>(LinearLayout::Orientation::VERTICAL, 0.f);
         root.layout = std::move(l);
@@ -57,7 +62,7 @@ void buildDemoScene(UISystem& sys,
         header->layout = std::move(l);
     }
 
-    auto* titleLbl = header->make<Label>("OpenGL Widget Demo");
+    auto* titleLbl = header->make<Label>("OpenGL NDK Demo");
     titleLbl->textColor = pal::textMain;
     titleLbl->fontSize  = 18.f * dp;
     titleLbl->weight    = 1.f;
@@ -69,36 +74,11 @@ void buildDemoScene(UISystem& sys,
     fpsLbl->align     = TextAlign::RIGHT;
     outFps = fpsLbl;
 
-    // ── BODY: horizontal [left | gl | right] ─────────────────────────────────
+    // ── BODY ─────────────────────────────────────────────────────────────────
     auto* body = root.make<Container>();
     body->weight = 1.f;
-    {
-        auto l = std::make_unique<LinearLayout>(LinearLayout::Orientation::HORIZONTAL, 0.f);
-        body->layout = std::move(l);
-    }
 
-    // ── LEFT PANEL (scrollable) ───────────────────────────────────────────────
-    auto* scroll = body->make<ScrollContainer>();
-    scroll->prefW      = 150.f * dp;
-    scroll->scrollbarW   = 5.f  * dp;
-    scroll->scrollbarPad = 2.f  * dp;
-    scroll->trackColor   = pal::panelDark;
-    scroll->thumbColor   = Color{0.35f, 0.42f, 0.62f, 0.9f};
-    scroll->overscrollMode = (apiLevel >= 31)
-        ? ui::OverscrollMode::STRETCH
-        : ui::OverscrollMode::GLOW;
-    scroll->glowColor = pal::accent;
-    scroll->glowMaxH  = 40.f * dp;
-
-    Container* leftPanel = &scroll->content();
-    leftPanel->bgColor = pal::panel;
-    leftPanel->padding = 10.f * dp;
-    {
-        auto l = std::make_unique<LinearLayout>(LinearLayout::Orientation::VERTICAL, 7.f * dp);
-        l->crossGravity = LinearLayout::Gravity::FILL;
-        leftPanel->layout = std::move(l);
-    }
-
+    // Helper lambdas
     auto makeSection = [dp](Container* p, const std::string& t) {
         auto* l = p->make<Label>(t);
         l->textColor = pal::accent;
@@ -118,71 +98,7 @@ void buildDemoScene(UISystem& sys,
         s->prefH   = std::max(1.f, 1.f * dp);
     };
 
-    makeSection(leftPanel, "INFO");
-    outAngle = makeInfo(leftPanel, "Angle: 0.0");
-    makeInfo(leftPanel, "Vertices: 3");
-    makeInfo(leftPanel, "Draw calls: 1");
-    makeInfo(leftPanel, "API: GL ES 2.0");
-    makeInfo(leftPanel, "Renderer: NDK");
-    makeInfo(leftPanel, "VSync: on");
-    makeSep(leftPanel);
-    makeSection(leftPanel, "BUILD");
-    makeInfo(leftPanel, "Min SDK: 21");
-    makeInfo(leftPanel, "Target SDK: 35");
-    makeInfo(leftPanel, "ABI: arm64-v8a");
-    makeInfo(leftPanel, "C++ 17");
-    makeInfo(leftPanel, "NDK r26");
-    makeSep(leftPanel);
-    makeSection(leftPanel, "RENDERER");
-    makeInfo(leftPanel, "FreeType 2.13");
-    makeInfo(leftPanel, "Font: FreeSans");
-    makeInfo(leftPanel, "Atlas: 1024^2");
-    makeInfo(leftPanel, "Glyphs: ASCII");
-    makeSep(leftPanel);
-    makeSection(leftPanel, "PALETTE");
-
-    auto* chips = leftPanel->make<Container>();
-    chips->prefH = 18.f * dp;
-    {
-        auto l = std::make_unique<LinearLayout>(LinearLayout::Orientation::HORIZONTAL, 4.f * dp);
-        l->crossGravity = LinearLayout::Gravity::FILL;
-        chips->layout = std::move(l);
-    }
-    for (Color col : {pal::red, pal::green, pal::accent, pal::purple, pal::orange}) {
-        auto* chip = chips->make<Container>();
-        chip->bgColor = col;
-        chip->weight  = 1.f;
-    }
-
-    makeSep(leftPanel);
-    makeSection(leftPanel, "TOUCH");
-    makeInfo(leftPanel, "Multi-pointer");
-    makeInfo(leftPanel, "Scroll: drag");
-    makeInfo(leftPanel, "Buttons: tap");
-    makeSep(leftPanel);
-    makeSection(leftPanel, "ABOUT");
-    makeInfo(leftPanel, "android-3d-demo");
-    makeInfo(leftPanel, "MIT License");
-    makeInfo(leftPanel, "github.com/");
-
-    // ── GL WIDGET (center) ───────────────────────────────────────────────────
-    auto* glw = body->make<GLWidget>();
-    glw->weight       = 1.f;
-    glw->onRender     = glCb;
-    glw->borderColor  = Color{0.3f, 0.4f, 0.6f, 0.6f};
-    glw->borderWidth  = 2.f * dp;
-
-    // ── RIGHT PANEL ──────────────────────────────────────────────────────────
-    auto* rightPanel = body->make<Container>();
-    rightPanel->bgColor = pal::panel;
-    rightPanel->padding = 10.f * dp;
-    rightPanel->prefW   = 150.f * dp;
-    {
-        auto l = std::make_unique<LinearLayout>(LinearLayout::Orientation::VERTICAL, 8.f * dp);
-        l->crossGravity = LinearLayout::Gravity::FILL;
-        rightPanel->layout = std::move(l);
-    }
-
+    auto* sp = &scene;
     Label** pps = &outStatus;
 
     auto makeBtn = [&, dp](Container* p, const std::string& lbl, Color bg,
@@ -200,84 +116,296 @@ void buildDemoScene(UISystem& sys,
         return b;
     };
 
-    makeSection(rightPanel, "ACTIONS");
-    makeBtn(rightPanel, "Reset View",   pal::accent,  [pps](){
-        setStatus(pps, "View reset", Color{0.35f,0.72f,1.f,1.f});
-    });
-    makeBtn(rightPanel, "Pause",        pal::orange,  [pps](){
-        setStatus(pps, "Paused", pal::orange);
-    });
-    makeBtn(rightPanel, "Screenshot",   pal::green,   [pps](){
-        setStatus(pps, "Screenshot!", pal::green);
-    });
-    makeBtn(rightPanel, "Toggle Color", pal::purple,  [pps](){
-        setStatus(pps, "Color changed", pal::purple);
-    });
+    // Lambda to populate info content into a container
+    auto buildInfoContent = [&](Container* p) {
+        makeSection(p, "INFO");
+        outAngle = makeInfo(p, "Angle: 0.0");
+        makeInfo(p, "Vertices: 24");
+        makeInfo(p, "Draw calls: 2");
+        makeInfo(p, "API: GL ES 2.0");
+        makeInfo(p, "Renderer: NDK");
+        makeInfo(p, "VSync: on");
+        makeSep(p);
+        makeSection(p, "BUILD");
+        makeInfo(p, "Min SDK: 21");
+        makeInfo(p, "Target SDK: 35");
+        makeInfo(p, "ABI: arm64-v8a");
+        makeInfo(p, "C++ 17");
+        makeInfo(p, "NDK r26");
+        makeSep(p);
+        makeSection(p, "RENDERER");
+        makeInfo(p, "FreeType 2.13");
+        makeInfo(p, "Font: FreeSans");
+        makeInfo(p, "Atlas: 1024^2");
+        makeInfo(p, "Glyphs: ASCII");
+        makeSep(p);
+        makeSection(p, "PALETTE");
 
-    makeSep(rightPanel);
-    makeSection(rightPanel, "STATUS");
+        auto* chips = p->make<Container>();
+        chips->prefH = 18.f * dp;
+        {
+            auto l = std::make_unique<LinearLayout>(LinearLayout::Orientation::HORIZONTAL, 4.f * dp);
+            l->crossGravity = LinearLayout::Gravity::FILL;
+            chips->layout = std::move(l);
+        }
+        for (Color col : {pal::red, pal::green, pal::accent, pal::purple, pal::orange}) {
+            auto* chip = chips->make<Container>();
+            chip->bgColor = col;
+            chip->weight  = 1.f;
+        }
 
-    auto* statusLbl = rightPanel->make<Label>("Ready");
-    statusLbl->textColor = pal::textDim;
-    statusLbl->fontSize  = 13.f * dp;
-    statusLbl->prefH     = 20.f * dp;
-    outStatus = statusLbl;
-
-    auto* rFill = rightPanel->make<Container>();
-    rFill->weight = 1.f;
-
-    makeSep(rightPanel);
-    makeSection(rightPanel, "SPEED");
-
-    auto* speedRow = rightPanel->make<Container>();
-    speedRow->prefH = 38.f * dp;
-    {
-        auto l = std::make_unique<LinearLayout>(LinearLayout::Orientation::HORIZONTAL, 6.f * dp);
-        l->crossGravity = LinearLayout::Gravity::FILL;
-        speedRow->layout = std::move(l);
-    }
-
-    static float speedMul = 1.f;
-    auto* btnMinus = makeBtn(speedRow, "-", pal::panelDark, [pps]() {
-        speedMul = std::max(0.25f, speedMul * 0.5f);
-        char buf[32];
-        snprintf(buf, sizeof(buf), "Speed %.0f%%", speedMul * 100.f);
-        setStatus(pps, buf, pal::orange);
-    });
-    btnMinus->weight = 1.f;
-
-    auto* btnPlus = makeBtn(speedRow, "+", pal::panelDark, [pps]() {
-        speedMul = std::min(8.f, speedMul * 2.f);
-        char buf[32];
-        snprintf(buf, sizeof(buf), "Speed %.0f%%", speedMul * 100.f);
-        setStatus(pps, buf, pal::green);
-    });
-    btnPlus->weight = 1.f;
-
-    // ── FOOTER ───────────────────────────────────────────────────────────────
-    auto* footer = root.make<Container>();
-    footer->bgColor = pal::header;
-    footer->padding = 8.f * dp;
-    footer->prefH   = 52.f * dp;
-    {
-        auto l = std::make_unique<LinearLayout>(LinearLayout::Orientation::HORIZONTAL, 8.f * dp);
-        l->crossGravity = LinearLayout::Gravity::CENTER;
-        footer->layout = std::move(l);
-    }
-
-    struct FBtn { const char* label; Color bg; const char* msg; Color msgCol; };
-    FBtn fbtns[] = {
-        {"About",    pal::accent,    "About",     Color{0.35f,0.72f,1.f,1.f}},
-        {"Settings", pal::separator, "Settings",  pal::textDim               },
-        {"Export",   pal::green,     "Exported!", pal::green                  },
-        {"Share",    pal::purple,    "Shared!",   pal::purple                 },
+        makeSep(p);
+        makeSection(p, "TOUCH");
+        makeInfo(p, "Multi-pointer");
+        makeInfo(p, "Scroll: drag");
+        makeInfo(p, "Buttons: tap");
+        makeSep(p);
+        makeSection(p, "ABOUT");
+        makeInfo(p, "android-3d-demo");
+        makeInfo(p, "MIT License");
+        makeInfo(p, "github.com/");
     };
-    for (auto& fb : fbtns) {
-        std::string msg    = fb.msg;
-        Color       msgCol = fb.msgCol;
-        auto* b = makeBtn(footer, fb.label, fb.bg, [pps, msg, msgCol]() {
-            setStatus(pps, msg, msgCol);
+
+    // Lambda to populate controls content into a container (panel or tab)
+    // statusInHere: whether to put the status label in this container
+    auto buildControlsContent = [&](Container* p, bool statusInHere) {
+        makeSection(p, "ACTIONS");
+        makeBtn(p, "Reset View", pal::accent, [sp, pps](){
+            sp->resetView();
+            setStatus(pps, "View reset", Color{0.35f,0.72f,1.f,1.f});
         });
-        b->weight = 1.f;
+
+        // Pause toggle - use a static bool per-build (lambda captures sp)
+        makeBtn(p, "Pause", pal::orange, [sp, pps](){
+            if (sp->autoRotSpeed != 0.f) {
+                sp->autoRotSpeed = 0.f;
+                setStatus(pps, "Paused", pal::orange);
+            } else {
+                sp->autoRotSpeed = 0.5f;
+                setStatus(pps, "Resumed", pal::green);
+            }
+        });
+        makeBtn(p, "Screenshot", pal::green, [pps](){
+            setStatus(pps, "Screenshot!", pal::green);
+        });
+        makeBtn(p, "Toggle FPS", pal::purple, [sp, pps](){
+            sp->showFps = !sp->showFps;
+            setStatus(pps, sp->showFps ? "FPS shown" : "FPS hidden", pal::purple);
+        });
+
+        makeSep(p);
+        makeSection(p, "SPEED");
+
+        auto* speedRow = p->make<Container>();
+        speedRow->prefH = 38.f * dp;
+        {
+            auto l = std::make_unique<LinearLayout>(LinearLayout::Orientation::HORIZONTAL, 6.f * dp);
+            l->crossGravity = LinearLayout::Gravity::FILL;
+            speedRow->layout = std::move(l);
+        }
+
+        auto* btnMinus = makeBtn(speedRow, "-", pal::panelDark, [sp, pps]() {
+            sp->autoRotSpeed = std::max(0.1f, sp->autoRotSpeed * 0.5f);
+            char buf[32];
+            snprintf(buf, sizeof(buf), "Speed: %.2f", sp->autoRotSpeed);
+            setStatus(pps, buf, pal::orange);
+        });
+        btnMinus->weight = 1.f;
+
+        auto* btnPlus = makeBtn(speedRow, "+", pal::panelDark, [sp, pps]() {
+            sp->autoRotSpeed = std::min(8.f, sp->autoRotSpeed * 2.f);
+            char buf[32];
+            snprintf(buf, sizeof(buf), "Speed: %.2f", sp->autoRotSpeed);
+            setStatus(pps, buf, pal::green);
+        });
+        btnPlus->weight = 1.f;
+
+        if (statusInHere) {
+            makeSep(p);
+            makeSection(p, "STATUS");
+            auto* statusLbl = p->make<Label>("Ready");
+            statusLbl->textColor = pal::textDim;
+            statusLbl->fontSize  = 13.f * dp;
+            statusLbl->prefH     = 20.f * dp;
+            outStatus = statusLbl;
+        }
+    };
+
+    if (!compact) {
+        // ── WIDE LAYOUT: horizontal [left scroll | GLWidget | right panel] ──
+        {
+            auto l = std::make_unique<LinearLayout>(LinearLayout::Orientation::HORIZONTAL, 0.f);
+            body->layout = std::move(l);
+        }
+
+        // Left scrollable panel
+        auto* scroll = body->make<ScrollContainer>();
+        scroll->prefW      = 150.f * dp;
+        scroll->scrollbarW   = 5.f  * dp;
+        scroll->scrollbarPad = 2.f  * dp;
+        scroll->trackColor   = pal::panelDark;
+        scroll->thumbColor   = Color{0.35f, 0.42f, 0.62f, 0.9f};
+        scroll->overscrollMode = (apiLevel >= 31)
+            ? ui::OverscrollMode::STRETCH
+            : ui::OverscrollMode::GLOW;
+        scroll->glowColor = pal::accent;
+        scroll->glowMaxH  = 40.f * dp;
+
+        Container* leftPanel = &scroll->content();
+        leftPanel->bgColor = pal::panel;
+        leftPanel->padding = 10.f * dp;
+        {
+            auto l = std::make_unique<LinearLayout>(LinearLayout::Orientation::VERTICAL, 7.f * dp);
+            l->crossGravity = LinearLayout::Gravity::FILL;
+            leftPanel->layout = std::move(l);
+        }
+        buildInfoContent(leftPanel);
+
+        // GL Widget (center)
+        auto* glw = body->make<GLWidget>();
+        glw->weight       = 1.f;
+        glw->borderColor  = Color{0.3f, 0.4f, 0.6f, 0.6f};
+        glw->borderWidth  = 2.f * dp;
+        outGLWidget = glw;
+
+        // Right panel
+        auto* rightPanel = body->make<Container>();
+        rightPanel->bgColor = pal::panel;
+        rightPanel->padding = 10.f * dp;
+        rightPanel->prefW   = 150.f * dp;
+        {
+            auto l = std::make_unique<LinearLayout>(LinearLayout::Orientation::VERTICAL, 8.f * dp);
+            l->crossGravity = LinearLayout::Gravity::FILL;
+            rightPanel->layout = std::move(l);
+        }
+
+        buildControlsContent(rightPanel, false);
+
+        makeSep(rightPanel);
+        makeSection(rightPanel, "STATUS");
+        auto* statusLbl = rightPanel->make<Label>("Ready");
+        statusLbl->textColor = pal::textDim;
+        statusLbl->fontSize  = 13.f * dp;
+        statusLbl->prefH     = 20.f * dp;
+        outStatus = statusLbl;
+
+        auto* rFill = rightPanel->make<Container>();
+        rFill->weight = 1.f;
+
+        // ── FOOTER ───────────────────────────────────────────────────────────
+        auto* footer = root.make<Container>();
+        footer->bgColor = pal::header;
+        footer->padding = 8.f * dp;
+        footer->prefH   = 52.f * dp;
+        {
+            auto l = std::make_unique<LinearLayout>(LinearLayout::Orientation::HORIZONTAL, 8.f * dp);
+            l->crossGravity = LinearLayout::Gravity::CENTER;
+            footer->layout = std::move(l);
+        }
+
+        struct FBtn { const char* label; Color bg; const char* msg; Color msgCol; };
+        FBtn fbtns[] = {
+            {"About",    pal::accent,    "About",     Color{0.35f,0.72f,1.f,1.f}},
+            {"Settings", pal::separator, "Settings",  pal::textDim               },
+            {"Export",   pal::green,     "Exported!", pal::green                  },
+            {"Share",    pal::purple,    "Shared!",   pal::purple                 },
+        };
+        for (auto& fb : fbtns) {
+            std::string msg    = fb.msg;
+            Color       msgCol = fb.msgCol;
+            auto* b = makeBtn(footer, fb.label, fb.bg, [pps, msg, msgCol]() {
+                setStatus(pps, msg, msgCol);
+            });
+            b->weight = 1.f;
+        }
+
+    } else {
+        // ── COMPACT LAYOUT: vertical [GLWidget | TabContainer] ───────────────
+        {
+            auto l = std::make_unique<LinearLayout>(LinearLayout::Orientation::VERTICAL, 0.f);
+            body->layout = std::move(l);
+        }
+
+        // GL Widget (flex)
+        auto* glw = body->make<GLWidget>();
+        glw->weight       = 1.f;
+        glw->borderColor  = Color{0.3f, 0.4f, 0.6f, 0.6f};
+        glw->borderWidth  = 2.f * dp;
+        outGLWidget = glw;
+
+        // Tab container
+        auto* tabs = body->make<TabContainer>();
+        tabs->prefH       = 220.f * dp;
+        tabs->tabBarH     = 36.f  * dp;
+        tabs->fontSize    = 14.f  * dp;
+        tabs->activeColor = pal::accent;
+        tabs->inactiveColor = pal::panelDark;
+        tabs->textColor   = Colors::white;
+
+        // "Info" tab
+        Container* infoTab = tabs->addTab("Info");
+        infoTab->bgColor = pal::panel;
+        infoTab->padding = 10.f * dp;
+        {
+            auto l = std::make_unique<LinearLayout>(LinearLayout::Orientation::VERTICAL, 7.f * dp);
+            l->crossGravity = LinearLayout::Gravity::FILL;
+            infoTab->layout = std::move(l);
+        }
+
+        // Wrap info tab in a scroll container
+        auto* infoScroll = infoTab->make<ScrollContainer>();
+        infoScroll->weight = 1.f;
+        infoScroll->scrollbarW   = 5.f  * dp;
+        infoScroll->scrollbarPad = 2.f  * dp;
+        infoScroll->trackColor   = pal::panelDark;
+        infoScroll->thumbColor   = Color{0.35f, 0.42f, 0.62f, 0.9f};
+        infoScroll->overscrollMode = (apiLevel >= 31)
+            ? ui::OverscrollMode::STRETCH
+            : ui::OverscrollMode::GLOW;
+        infoScroll->glowColor = pal::accent;
+        infoScroll->glowMaxH  = 40.f * dp;
+
+        Container* infoContent = &infoScroll->content();
+        infoContent->bgColor = pal::panel;
+        infoContent->padding = 0.f;
+        {
+            auto l = std::make_unique<LinearLayout>(LinearLayout::Orientation::VERTICAL, 7.f * dp);
+            l->crossGravity = LinearLayout::Gravity::FILL;
+            infoContent->layout = std::move(l);
+        }
+        buildInfoContent(infoContent);
+
+        // "Controls" tab
+        Container* ctrlTab = tabs->addTab("Controls");
+        ctrlTab->bgColor = pal::panel;
+        ctrlTab->padding = 10.f * dp;
+        {
+            auto l = std::make_unique<LinearLayout>(LinearLayout::Orientation::VERTICAL, 7.f * dp);
+            l->crossGravity = LinearLayout::Gravity::FILL;
+            ctrlTab->layout = std::move(l);
+        }
+
+        // Wrap controls in a scroll container
+        auto* ctrlScroll = ctrlTab->make<ScrollContainer>();
+        ctrlScroll->weight = 1.f;
+        ctrlScroll->scrollbarW   = 5.f  * dp;
+        ctrlScroll->scrollbarPad = 2.f  * dp;
+        ctrlScroll->trackColor   = pal::panelDark;
+        ctrlScroll->thumbColor   = Color{0.35f, 0.42f, 0.62f, 0.9f};
+        ctrlScroll->overscrollMode = (apiLevel >= 31)
+            ? ui::OverscrollMode::STRETCH
+            : ui::OverscrollMode::GLOW;
+        ctrlScroll->glowColor = pal::accent;
+        ctrlScroll->glowMaxH  = 40.f * dp;
+
+        Container* ctrlContent = &ctrlScroll->content();
+        ctrlContent->bgColor = pal::panel;
+        ctrlContent->padding = 0.f;
+        {
+            auto l = std::make_unique<LinearLayout>(LinearLayout::Orientation::VERTICAL, 7.f * dp);
+            l->crossGravity = LinearLayout::Gravity::FILL;
+            ctrlContent->layout = std::move(l);
+        }
+        buildControlsContent(ctrlContent, true);
     }
 }

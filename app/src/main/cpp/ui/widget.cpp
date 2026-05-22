@@ -329,4 +329,62 @@ void AbsoluteLayout::apply(Container& c) {
         k->setBounds(ox + k->x, oy + k->y, k->w, k->h);
 }
 
+// ── TabContainer ──────────────────────────────────────────────────────────────
+
+Container* TabContainer::addTab(const std::string& label) {
+    int idx = (int)tabs_.size();
+    tabs_.push_back({label, std::make_unique<Container>(), nullptr});
+
+    auto* btn = tabBar_.make<Button>(label);
+    btn->fontSize      = fontSize;
+    btn->weight        = 1.f;
+    btn->textColor     = textColor;
+    btn->cornerRadius  = 0.f;
+    btn->bgNormal      = (idx == 0) ? activeColor  : inactiveColor;
+    btn->bgHover       = (idx == 0) ? activeColor  : inactiveColor.lerp(Colors::white, 0.08f);
+    btn->bgPressed     = activeColor.lerp(Colors::black, 0.15f);
+    btn->bgDisabled    = inactiveColor;
+
+    auto* self = this;
+    btn->onClick = [self, idx]() { self->setActive(idx); };
+    tabs_.back().button_ = btn;
+    return tabs_.back().content.get();
+}
+
+void TabContainer::setActive(int i) {
+    if (i < 0 || i >= (int)tabs_.size()) return;
+    activeTab_ = i;
+    for (int j = 0; j < (int)tabs_.size(); ++j) {
+        if (!tabs_[j].button_) continue;
+        bool act = (j == activeTab_);
+        tabs_[j].button_->bgNormal = act ? activeColor  : inactiveColor;
+        tabs_[j].button_->bgHover  = act ? activeColor  : inactiveColor.lerp(Colors::white, 0.08f);
+    }
+}
+
+void TabContainer::doLayout() {
+    auto ll = std::make_unique<LinearLayout>(LinearLayout::Orientation::HORIZONTAL, 0.f);
+    ll->crossGravity = LinearLayout::Gravity::FILL;
+    tabBar_.layout = std::move(ll);
+    tabBar_.setBounds(x, y + h - tabBarH, w, tabBarH);
+    float cy = y, ch = h - tabBarH;
+    for (auto& tab : tabs_)
+        if (tab.content) tab.content->setBounds(x, cy, w, ch);
+}
+
+void TabContainer::draw(UIRenderer& r) {
+    if (!visible) return;
+    tabBar_.draw(r);
+    if (activeTab_ >= 0 && activeTab_ < (int)tabs_.size())
+        if (tabs_[activeTab_].content) tabs_[activeTab_].content->draw(r);
+}
+
+bool TabContainer::onInput(const InputEvent& e) {
+    if (!visible || !enabled) return false;
+    if (tabBar_.onInput(e)) return true;
+    if (activeTab_ >= 0 && activeTab_ < (int)tabs_.size())
+        if (tabs_[activeTab_].content) return tabs_[activeTab_].content->onInput(e);
+    return false;
+}
+
 } // namespace ui
