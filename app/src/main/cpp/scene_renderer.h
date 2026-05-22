@@ -3,10 +3,20 @@
 #include <GLES2/gl2.h>
 #include <string>
 #include <cstdint>
+#include <vector>
 
 namespace ui { class UIRenderer; struct InputEvent; }
 
 namespace scene {
+
+enum class ObjType { CUBE, SPHERE, CYLINDER };
+
+struct SceneObject {
+    ObjType type    = ObjType::CUBE;
+    float   px=0, py=0, pz=0;   // world position
+    float   scale   = 1.f;
+    bool    selected = false;
+};
 
 class SceneRenderer {
 public:
@@ -14,10 +24,19 @@ public:
     Camera defaultCamera_;
     float  autoRotation = 0.f;
     float  autoRotSpeed = 0.f;
+    bool   showFps      = true;
+    std::string fpsText;
 
-    // Selection / pivot marker state
-    bool  cubeSelected_  = false;
-    bool  showHitMarker_ = false;
+    std::vector<SceneObject> objects;   // scene objects; index -1 = none selected
+    int  selectedObj_  = -1;
+    bool showHitMarker_ = false;
+
+    // Pivot animation (double-tap)
+    bool    pivotAnim_   = false;
+    float   pivotSrcX_=0, pivotSrcY_=0, pivotSrcZ_=0;
+    float   pivotDstX_=0, pivotDstY_=0, pivotDstZ_=0;
+    int64_t pivotAnimT0_ = 0;
+    static constexpr float kPivotAnimMs = 350.f;
 
     void init(float screenW, float screenH);
     void shutdown();
@@ -29,17 +48,19 @@ public:
 private:
     float screenW_ = 0, screenH_ = 0;
 
-    // Cube shader
-    GLuint cubeProg_ = 0;
-    GLint  cubeUMVP_ = -1, cubeUModel_ = -1;
-    GLint  cubeAPos_ = -1, cubeANorm_ = -1, cubeACol_ = -1;
+    // Lit object shader (cube + sphere + cylinder)
+    GLuint objProg_    = 0;
+    GLint  objUMVP_    = -1, objUModel_ = -1;
+    GLint  objAPos_    = -1, objANorm_  = -1, objACol_ = -1;
 
     // Grid/flat-color shader
     GLuint gridProg_ = 0;
     GLint  gridUMVP_ = -1, gridUColor_ = -1, gridAPos_ = -1;
 
-    // Geometry
-    GLuint cubeVBO_ = 0, cubeIBO_ = 0;
+    // Geometry — indexed (VBO + IBO) for each object type
+    struct Mesh { GLuint vbo=0, ibo=0; int nIdx=0; };
+    Mesh cubeMesh_, sphereMesh_, cylinderMesh_;
+
     GLuint gridVBO_ = 0;
     int    gridNVerts_ = 0;
     GLuint axisVBO_ = 0;
@@ -52,9 +73,9 @@ private:
     Ptr   ptrs_[2];
     int   nPtrs_ = 0;
 
-    // Orbit (single finger): per-frame delta
+    // Orbit (single finger)
     float prevOrbitX_ = 0, prevOrbitY_ = 0;
-    bool  blockOrbit_ = false;   // true while any 2-finger gesture is/was active
+    bool  blockOrbit_ = false;
 
     // Two-finger: exclusive zoom vs pan
     float prevDist_ = 0, prevMidX_ = 0, prevMidY_ = 0;
@@ -64,22 +85,27 @@ private:
     // Tap detection
     float   tapStartX_ = 0, tapStartY_ = 0;
     int64_t tapStartMs_ = 0;
-    bool    tapMoved_   = false;   // also set true when a 2nd finger arrives
+    bool    tapMoved_   = false;
     int64_t lastTapMs_  = 0;
     float   lastTapX_   = 0, lastTapY_ = 0;
 
     static int64_t nowMs();
     void getRayFromTouch(float tx, float ty, float orig[3], float dir[3]) const;
-    // Returns true and sets hitT if ray hits the (rotated) cube AABB
-    static bool rayCastCube(const float orig[3], const float dir[3],
-                            float autoRotRad, float& hitT);
+    // Returns true + hitT for a single object; ray in world space, autoRotRad global spin
+    static bool rayCastObject(const SceneObject& obj, const float orig[3], const float dir[3],
+                              float autoRotRad, float& hitT);
     void handleTap(float tx, float ty, bool isDouble);
 
     static GLuint compileShader(GLenum type, const char* src);
     void buildShaders();
-    void buildCubeGeometry();
+    static Mesh buildMeshFromVerts(const std::vector<float>& verts,
+                                   const std::vector<uint16_t>& idx);
+    void buildCubeMesh();
+    void buildSphereMesh();
+    void buildCylinderMesh();
     void buildGridGeometry();
     void buildAxisGeometry();
+    void drawMesh(const Mesh& m) const;
 };
 
 } // namespace scene

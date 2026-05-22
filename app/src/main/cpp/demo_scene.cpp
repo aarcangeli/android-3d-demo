@@ -35,7 +35,6 @@ void buildDemoScene(UISystem& sys,
                     int apiLevel,
                     scene::SceneRenderer& scene,
                     GLWidget*& outGLWidget,
-                    Label*& outFps,
                     Label*& outAngle,
                     Label*& outStatus)
 {
@@ -66,13 +65,6 @@ void buildDemoScene(UISystem& sys,
     titleLbl->textColor = pal::textMain;
     titleLbl->fontSize  = 18.f * dp;
     titleLbl->weight    = 1.f;
-
-    auto* fpsLbl = header->make<Label>("-- FPS");
-    fpsLbl->textColor = pal::accent;
-    fpsLbl->fontSize  = 16.f * dp;
-    fpsLbl->prefW     = 90.f * dp;
-    fpsLbl->align     = TextAlign::RIGHT;
-    outFps = fpsLbl;
 
     // ── BODY ─────────────────────────────────────────────────────────────────
     auto* body = root.make<Container>();
@@ -138,22 +130,6 @@ void buildDemoScene(UISystem& sys,
         makeInfo(p, "Font: FreeSans");
         makeInfo(p, "Atlas: 1024^2");
         makeInfo(p, "Glyphs: ASCII");
-        makeSep(p);
-        makeSection(p, "PALETTE");
-
-        auto* chips = p->make<Container>();
-        chips->prefH = 18.f * dp;
-        {
-            auto l = std::make_unique<LinearLayout>(LinearLayout::Orientation::HORIZONTAL, 4.f * dp);
-            l->crossGravity = LinearLayout::Gravity::FILL;
-            chips->layout = std::move(l);
-        }
-        for (Color col : {pal::red, pal::green, pal::accent, pal::purple, pal::orange}) {
-            auto* chip = chips->make<Container>();
-            chip->bgColor = col;
-            chip->weight  = 1.f;
-        }
-
         makeSep(p);
         makeSection(p, "TOUCH");
         makeInfo(p, "Multi-pointer");

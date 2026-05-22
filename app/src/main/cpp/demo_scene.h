@@ -10,6 +10,5 @@ void buildDemoScene(ui::UISystem& sys,
                     int apiLevel,
                     scene::SceneRenderer& scene,
                     ui::GLWidget*& outGLWidget,
-                    ui::Label*& outFpsLabel,
                     ui::Label*& outAngleLabel,
                     ui::Label*& outStatusLabel);
