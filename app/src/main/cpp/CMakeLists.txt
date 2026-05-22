@@ -36,6 +36,8 @@ target_include_directories(openglndkdemo PRIVATE
 find_library(log-lib     log)
 find_library(android-lib android)
 
+target_compile_features(openglndkdemo PRIVATE cxx_std_20)
+
 target_link_libraries(
     openglndkdemo
     freetype

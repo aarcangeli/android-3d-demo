@@ -25,7 +25,6 @@ bool   g_needBuild = false;
 bool   g_isCompact = false;
 
 ui::UISystem  g_ui;
-ui::Label*    g_fpsLabel    = nullptr;
 ui::Label*    g_angleLabel  = nullptr;
 ui::Label*    g_statusLabel = nullptr;
 
@@ -45,11 +44,11 @@ static void wireGLWidget() {
 
 static void rebuildUI(float screenW) {
     g_ui.root().clearChildren();
-    g_fpsLabel = g_angleLabel = g_statusLabel = nullptr;
+    g_angleLabel = g_statusLabel = nullptr;
     g_glWidget = nullptr;
     buildDemoScene(g_ui, g_density, screenW, g_apiLevel,
                    g_scene, g_glWidget,
-                   g_fpsLabel, g_angleLabel, g_statusLabel);
+                   g_angleLabel, g_statusLabel);
     wireGLWidget();
 }
 
@@ -128,7 +127,6 @@ JNIEXPORT void JNICALL
 Java_com_example_openglndkdemo_GLRenderer_nativeSetFps(JNIEnv* env, jobject, jstring fps) {
     const char* s = env->GetStringUTFChars(fps, nullptr);
     g_scene.fpsText = s;
-    if (g_fpsLabel) g_fpsLabel->text = s;
     env->ReleaseStringUTFChars(fps, s);
 }
 

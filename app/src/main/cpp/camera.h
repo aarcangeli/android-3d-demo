@@ -35,7 +35,7 @@ struct Camera {
     void clamp() {
         if (elevation >  89.f) elevation =  89.f;
         if (elevation < -89.f) elevation = -89.f;
-        if (distance  <   0.3f) distance =   0.3f;
+        if (distance  <  0.05f) distance =  0.05f;
         if (distance  > 50.f)  distance  = 50.f;
     }
 
@@ -50,8 +50,8 @@ struct Camera {
     // Camera right and true-up vectors (rows 0 and 1 of the view matrix).
     void rightAndUp(float r[3], float u[3]) const {
         float vm[16]; viewMatrix(vm);
-        r[0]=vm[0]; r[1]=vm[1]; r[2]=vm[2];
-        u[0]=vm[4]; u[1]=vm[5]; u[2]=vm[6];
+        r[0]=vm[0]; r[1]=vm[4]; r[2]=vm[8];
+        u[0]=vm[1]; u[1]=vm[5]; u[2]=vm[9];
     }
 
     // Standard lookAt view matrix (column-major).
@@ -79,9 +79,9 @@ struct Camera {
 
         // Column-major view matrix [col*4+row]
         //   row0=[R, -R·E]   row1=[V, -V·E]   row2=[-F, F·E]
-        m[0]=rx;  m[4]=vx;  m[8] =-fx;  m[12]=-(rx*ex+ry*ey+rz*ez);
-        m[1]=ry;  m[5]=vy;  m[9] =-fy;  m[13]=-(vx*ex+vy*ey+vz*ez);
-        m[2]=rz;  m[6]=vz;  m[10]=-fz;  m[14]= (fx*ex+fy*ey+fz*ez);
+        m[0]=rx;  m[4]=ry;  m[8] =rz;   m[12]=-(rx*ex+ry*ey+rz*ez);
+        m[1]=vx;  m[5]=vy;  m[9] =vz;   m[13]=-(vx*ex+vy*ey+vz*ez);
+        m[2]=-fx; m[6]=-fy; m[10]=-fz;  m[14]= (fx*ex+fy*ey+fz*ez);
         m[3]=0;   m[7]=0;   m[11]=0;    m[15]=1;
     }
 
